@@ -40,7 +40,7 @@ const PW = W - ML - MR;
 const PH = H - MT - MB;
 const QMAX = 50, CMAX = 60;
 
-// Bezpečné ekonomické rovnice
+// Ekonomické rovnice
 const p_d = Q => 60 * Math.exp(-0.0277 * Q);
 const p_s = Q => 10 + 0.032 * Q * Q;
 
@@ -55,46 +55,45 @@ const q_s = P => {
   return Math.max(0, Math.min(QMAX, Math.sqrt((P - 10) / 0.032)));
 };
 
-const QE = 25, PE = 30; // Bod tržní rovnováhy
+const QE = 25, PE = 30; // Bod tržního optima E
 
 const tx = Q => ML + Q / QMAX * PW;
 const ty = C => MT + PH - C / CMAX * PH;
 const cFromY = y => CMAX - (y - MT) / PH * CMAX;
 
-let selP = 45; // Výchozí pozice (přebytek) při načtení
+let selP = 45; // Výchozí pozice
 let isDragging = false;
 
 function ln(x1, y1, x2, y2) { cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y2); cx.stroke(); }
 
 function drawBackgroundZones() {
-  // Horní červenavá oblast (Přebytek)
-  cx.fillStyle = 'rgba(255, 235, 235, 0.3)';
+  // Horní jemná oblast pro přebytek
+  cx.fillStyle = 'rgba(255, 235, 235, 0.2)';
   cx.fillRect(ML, ty(CMAX), PW, ty(PE) - ty(CMAX));
-  cx.fillStyle = 'rgba(180, 50, 50, 0.4)';
+  cx.fillStyle = 'rgba(180, 50, 50, 0.3)';
   cx.font = 'italic 12px Arial';
   cx.fillText('přebytek (surplus)', ML + PW - 115, ty(CMAX) + 20);
 
-  // Dolní žlutavá oblast (Nedostatek)
-  cx.fillStyle = 'rgba(255, 250, 220, 0.3)';
+  // Dolní jemná oblast pro nedostatek
+  cx.fillStyle = 'rgba(255, 250, 220, 0.2)';
   cx.fillRect(ML, ty(PE), PW, ty(10) - ty(PE));
-  cx.fillStyle = 'rgba(160, 110, 20, 0.4)';
+  cx.fillStyle = 'rgba(160, 110, 20, 0.3)';
   cx.fillText('nedostatek (shortage)', ML + PW - 130, ty(PE) + 20);
 
-  // Oblast pod minimální cenou nabídky
   cx.fillStyle = '#f9f9f9';
   cx.fillRect(ML, ty(10), PW, ty(0) - ty(10));
 }
 
 function drawGrid() {
-  cx.strokeStyle = '#f0f0f0'; cx.lineWidth = 1;
+  cx.strokeStyle = '#f5f5f5'; cx.lineWidth = 1;
   for (let q = 5; q < QMAX; q += 5) ln(tx(q), MT, tx(q), MT + PH);
   for (let c = 5; c < CMAX; c += 5) ln(ML, ty(c), ML + PW, ty(c));
 }
 
 function drawAxes() {
   cx.strokeStyle = '#333'; cx.lineWidth = 2;
-  ln(ML, MT + PH, ML + PW + 10, MT + PH); // Osa Q
-  ln(ML, MT + PH, ML, MT - 10);          // Osa P
+  ln(ML, MT + PH, ML + PW + 10, MT + PH);
+  ln(ML, MT + PH, ML, MT - 10);
   
   cx.fillStyle = '#111'; cx.font = 'bold 14px Arial';
   cx.fillText('Q', ML + PW + 12, MT + PH + 5);
@@ -136,45 +135,67 @@ function drawInteractiveZone() {
   const yP = ty(p);
   const y0 = ty(0);
 
+  // Souřadnice bodu optima E
+  const xE = tx(QE);
+  const yE = ty(PE);
+
   cx.save();
   
-  // OPRAVA: Vykreslení úzkého proužku PŘÍMO mezi křivkami (přesně podle učebnice)
-  const rectHeight = 12; // Výška zvýrazňujícího proužku
-  
+  // OPRAVA: Vykreslování trojúhelníkových ploch vycházejících Z BODU OPTIMA (E)
   if (p > PE) {
-    // Přebytek: Úzký vodorovný proužek od Qd do Qs kolem vybrané ceny
-    cx.fillStyle = 'rgba(215, 50, 50, 0.3)';
-    cx.strokeStyle = 'rgba(180, 30, 30, 0.8)';
-    cx.fillRect(xQD, yP - rectHeight/2, xQS - xQD, rectHeight);
+    cx.fillStyle = 'rgba(215, 50, 50, 0.22)';
+    cx.strokeStyle = 'rgba(180, 30, 30, 0.7)';
     cx.lineWidth = 1.5;
-    cx.strokeRect(xQD, yP - rectHeight/2, xQS - xQD, rectHeight);
 
-    // Text popisku umístěný elegantně NAD proužek
+    cx.beginPath();
+    cx.moveTo(xE, yE);   // Začátek v optimu E
+    
+    // Vykreslení podél křivky poptávky nahoru k vybrané ceně
+    for (let q = QE; q >= qd; q -= 0.5) { cx.lineTo(tx(q), ty(p_d(q))); }
+    cx.lineTo(xQD, yP);
+    cx.lineTo(xQS, yP);  // Vodorovná úsečka reprezentující velikost přebytku
+    
+    // Vykreslení podél křivky nabídky dolů zpět do optima E
+    for (let q = qs; q >= QE; q -= 0.5) { cx.lineTo(tx(q), ty(p_s(q))); }
+    cx.closePath();
+    cx.fill(); cx.stroke();
+
+    // Text popisku uvnitř trojúhelníku přebytku
     cx.fillStyle = '#cc0000'; cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
-    cx.fillText(`Přebytek: ${(qs - qd).toFixed(1)}`, xQD + (xQS - xQD) / 2, yP - 10);
+    cx.fillText(`Přebytek: ${(qs - qd).toFixed(1)}`, xE, yP - 12);
 
   } else if (p < PE && p >= 10) {
-    // Nedostatek: Úzký vodorovný proužek od Qs do Qd kolem vybrané ceny
-    cx.fillStyle = 'rgba(235, 175, 0, 0.3)';
-    cx.strokeStyle = 'rgba(200, 140, 30, 0.8)';
-    cx.fillRect(xQS, yP - rectHeight/2, xQD - xQS, rectHeight);
+    cx.fillStyle = 'rgba(235, 175, 0, 0.22)';
+    cx.strokeStyle = 'rgba(200, 140, 30, 0.7)';
     cx.lineWidth = 1.5;
-    cx.strokeRect(xQS, yP - rectHeight/2, xQD - xQS, rectHeight);
 
-    // Text popisku umístěný elegantně NAD proužek
+    cx.beginPath();
+    cx.moveTo(xE, yE);   // Začátek v optimu E
+    
+    // Vykreslení podél křivky poptávky dolů k vybrané ceně
+    for (let q = QE; q <= qd; q += 0.5) { cx.lineTo(tx(q), ty(p_d(q))); }
+    cx.lineTo(xQD, yP);
+    cx.lineTo(xQS, yP);  // Vodorovná úsečka reprezentující velikost nedostatku
+    
+    // Vykreslení podél křivky nabídky nahoru zpět do optima E
+    for (let q = qs; q <= QE; q += 0.5) { cx.lineTo(tx(q), ty(p_s(q))); }
+    cx.closePath();
+    cx.fill(); cx.stroke();
+
+    // Text popisku uvnitř trojúhelníku nedostatku
     cx.fillStyle = '#c68400'; cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
-    cx.fillText(`Nedostatek: ${(qd - qs).toFixed(1)}`, xQS + (xQD - xQS) / 2, yP - 10);
+    cx.fillText(`Nedostatek: ${(qd - qs).toFixed(1)}`, xE, yP + 22);
   }
 
-  // Vodící čárkované linky k osám zůstávají pro přesné odečítání hodnot
-  cx.setLineDash([5, 4]); cx.strokeStyle = '#666'; cx.lineWidth = 1.2;
-  ln(ML, yP, Math.max(xQD, xQS), yP); // Linka k ose P
+  // Vodící čárkované čáry k osám
+  cx.setLineDash([5, 4]); cx.strokeStyle = '#555'; cx.lineWidth = 1.2;
+  ln(ML, yP, Math.max(xQD, xQS), yP);
   
   if (p >= 10) {
-    ln(xQD, yP, xQD, y0); // Svislá linka od Qd dolů
-    ln(xQS, yP, xQS, y0); // Svislá linka od Qs dolů
+    ln(xQD, yP, xQD, y0);
+    ln(xQS, yP, xQS, y0);
     
-    // Dynamické popisky Qd a Qs na ose Q
+    // Názvy Qd a Qs na ose Q
     cx.setLineDash([]); cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
     cx.fillStyle = '#1e88e5'; cx.fillText(`Qd`, xQD, y0 + 16);
     cx.fillStyle = '#e53935'; cx.fillText(`Qs`, xQS, y0 + 16);
@@ -188,7 +209,7 @@ function drawEquilibrium() {
   ln(tx(QE), ty(PE), ML, ty(PE));
   cx.restore();
 
-  cx.beginPath(); cx.arc(tx(QE), ty(PE), 6, 0, Math.PI * 2);
+  cx.beginPath(); cx.arc(tx(QE), ty(PE), 5, 0, Math.PI * 2);
   cx.fillStyle = '#fff'; cx.fill();
   cx.strokeStyle = '#222'; cx.lineWidth = 2; cx.stroke();
   
@@ -204,8 +225,8 @@ function draw() {
   drawBackgroundZones();
   drawGrid();
   drawInteractiveZone();
-  drawCurve(p_d, '#1e88e5', 'D (Poptávka)', 40); // Poptávka
-  drawCurve(p_s, '#e53935', 'S (Nabídka)', 38); // Nabídka
+  drawCurve(p_d, '#1e88e5', 'D', 42);
+  drawCurve(p_s, '#e53935', 'S', 40);
   drawEquilibrium();
   drawAxes();
 }
@@ -236,13 +257,13 @@ function updatePanel() {
   let finalCalculations = '';
 
   if (p > PE) {
-    statusText = '<span class="surplus-txt">🟢 P > Pe → Tržní přebytek</span><br>Cena je moc vysoká. Výrobci nabízí víc, než lidé chtějí koupit. Vzniká tlak na snížení ceny.';
-    finalCalculations = `<br><br><span class="surplus-txt">Celkový přebytek: ${diff.toFixed(1)}</span>`;
+    statusText = '<span class="surplus-txt">🟢 P > Pe → Tržní přebytek</span><br>Cena je vyšší než rovnovážná. Vzniká motivace pro pokles ceny zpět k optimu.';
+    finalCalculations = `<br><br><span class="surplus-txt">Rozsah přebytku: ${diff.toFixed(1)}</span>`;
   } else if (p < PE && p >= 10) {
-    statusText = '<span class="shortage-txt">🟡 P < Pe → Tržní nedostatek</span><br>Nízká cena láká kupující, ale firmám se nechce vyrábět. Zboží je nedostatek, cena poletí vzhůru.';
-    finalCalculations = `<br><br><span class="shortage-txt">Celkový nedostatek: ${Math.abs(diff).toFixed(1)}</span>`;
+    statusText = '<span class="shortage-txt">🟡 P < Pe → Tržní nedostatek</span><br>Cena je pod rovnovážnou úrovní. Chybějící zboží tlačí cenu vzhůru zpět k optimu.';
+    finalCalculations = `<br><br><span class="shortage-txt">Rozsah nedostatku: ${Math.abs(diff).toFixed(1)}</span>`;
   } else {
-    statusText = '<span class="surplus-txt">🔴 P < 10 → Nulová nabídka</span><br>Při extrémně nízké ceně se výrobcům nevyplatí produkovat vůbec nic.';
+    statusText = '<span class="surplus-txt">🔴 P < 10 → Nulová nabídka</span>';
   }
 
   noteDiv.innerHTML = `<b>Tržní stav při P = ${p.toFixed(1)}</b><br><br>${statusText}${finalCalculations}`;
@@ -267,7 +288,6 @@ window.addEventListener('mousemove', e => { if (isDragging) handleEvent(e); });
 window.addEventListener('mouseup', () => { isDragging = false; });
 cv.addEventListener('click', handleEvent);
 
-// První vykreslení
 updatePanel();
 draw();
 </script>
