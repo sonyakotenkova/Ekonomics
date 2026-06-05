@@ -68,14 +68,14 @@ function ln(x1, y1, x2, y2) { cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y
 
 function drawBackgroundZones() {
   // Horní červenavá oblast (Přebytek)
-  cx.fillStyle = 'rgba(255, 235, 235, 0.4)';
+  cx.fillStyle = 'rgba(255, 235, 235, 0.3)';
   cx.fillRect(ML, ty(CMAX), PW, ty(PE) - ty(CMAX));
   cx.fillStyle = 'rgba(180, 50, 50, 0.4)';
   cx.font = 'italic 12px Arial';
   cx.fillText('přebytek (surplus)', ML + PW - 115, ty(CMAX) + 20);
 
   // Dolní žlutavá oblast (Nedostatek)
-  cx.fillStyle = 'rgba(255, 250, 220, 0.4)';
+  cx.fillStyle = 'rgba(255, 250, 220, 0.3)';
   cx.fillRect(ML, ty(PE), PW, ty(10) - ty(PE));
   cx.fillStyle = 'rgba(160, 110, 20, 0.4)';
   cx.fillText('nedostatek (shortage)', ML + PW - 130, ty(PE) + 20);
@@ -138,44 +138,46 @@ function drawInteractiveZone() {
 
   cx.save();
   
-  // Vykreslení velkých barevných zón DOLŮ k ose Q (Styl tvého prvního grafu)
+  // OPRAVA: Vykreslení úzkého proužku PŘÍMO mezi křivkami (přesně podle učebnice)
+  const rectHeight = 12; // Výška zvýrazňujícího proužku
+  
   if (p > PE) {
-    // Přebytek: Obdélník padající dolů k ose mezi Qd a Qs
-    cx.fillStyle = 'rgba(215, 50, 50, 0.18)';
-    cx.strokeStyle = 'rgba(180, 30, 30, 0.6)';
-    cx.fillRect(xQD, yP, xQS - xQD, y0 - yP);
+    // Přebytek: Úzký vodorovný proužek od Qd do Qs kolem vybrané ceny
+    cx.fillStyle = 'rgba(215, 50, 50, 0.3)';
+    cx.strokeStyle = 'rgba(180, 30, 30, 0.8)';
+    cx.fillRect(xQD, yP - rectHeight/2, xQS - xQD, rectHeight);
     cx.lineWidth = 1.5;
-    cx.strokeRect(xQD, yP, xQS - xQD, y0 - yP);
+    cx.strokeRect(xQD, yP - rectHeight/2, xQS - xQD, rectHeight);
 
-    // Výpočet a zobrazení textu uvnitř vybarveného obdélníku
-    cx.fillStyle = '#cc0000'; cx.font = 'bold 13px Arial'; cx.textAlign = 'center';
-    cx.fillText(`Přebytek: ${(qs - qd).toFixed(1)}`, xQD + (xQS - xQD) / 2, yP + (y0 - yP) / 2);
+    // Text popisku umístěný elegantně NAD proužek
+    cx.fillStyle = '#cc0000'; cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
+    cx.fillText(`Přebytek: ${(qs - qd).toFixed(1)}`, xQD + (xQS - xQD) / 2, yP - 10);
 
   } else if (p < PE && p >= 10) {
-    // Nedostatek: Obdélník padající dolů k ose mezi Qs a Qd
-    cx.fillStyle = 'rgba(235, 175, 0, 0.18)';
-    cx.strokeStyle = 'rgba(200, 140, 30, 0.6)';
-    cx.fillRect(xQS, yP, xQD - xQS, y0 - yP);
+    // Nedostatek: Úzký vodorovný proužek od Qs do Qd kolem vybrané ceny
+    cx.fillStyle = 'rgba(235, 175, 0, 0.3)';
+    cx.strokeStyle = 'rgba(200, 140, 30, 0.8)';
+    cx.fillRect(xQS, yP - rectHeight/2, xQD - xQS, rectHeight);
     cx.lineWidth = 1.5;
-    cx.strokeRect(xQS, yP, xQD - xQS, y0 - yP);
+    cx.strokeRect(xQS, yP - rectHeight/2, xQD - xQS, rectHeight);
 
-    // Výpočet a zobrazení textu uvnitř vybarveného obdélníku
-    cx.fillStyle = '#c68400'; cx.font = 'bold 13px Arial'; cx.textAlign = 'center';
-    cx.fillText(`Nedostatek: ${(qd - qs).toFixed(1)}`, xQS + (xQD - xQS) / 2, yP + (y0 - yP) / 2);
+    // Text popisku umístěný elegantně NAD proužek
+    cx.fillStyle = '#c68400'; cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
+    cx.fillText(`Nedostatek: ${(qd - qs).toFixed(1)}`, xQS + (xQD - xQS) / 2, yP - 10);
   }
 
-  // Vodící čárkované linky k osám (Podle tvé učebnice)
-  cx.setLineDash([5, 4]); cx.strokeStyle = '#444'; cx.lineWidth = 1.2;
-  ln(ML, yP, Math.max(xQD, xQS), yP);
+  // Vodící čárkované linky k osám zůstávají pro přesné odečítání hodnot
+  cx.setLineDash([5, 4]); cx.strokeStyle = '#666'; cx.lineWidth = 1.2;
+  ln(ML, yP, Math.max(xQD, xQS), yP); // Linka k ose P
   
   if (p >= 10) {
-    ln(xQD, yP, xQD, y0);
-    ln(xQS, yP, xQS, y0);
+    ln(xQD, yP, xQD, y0); // Svislá linka od Qd dolů
+    ln(xQS, yP, xQS, y0); // Svislá linka od Qs dolů
     
-    // Dynamické popisky Qd a Qs přímo na ose Q
+    // Dynamické popisky Qd a Qs na ose Q
     cx.setLineDash([]); cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
-    cx.fillStyle = '#1e88e5'; cx.fillText(`Qd`, xQD, y0 + 32);
-    cx.fillStyle = '#e53935'; cx.fillText(`Qs`, xQS, y0 + 32);
+    cx.fillStyle = '#1e88e5'; cx.fillText(`Qd`, xQD, y0 + 16);
+    cx.fillStyle = '#e53935'; cx.fillText(`Qs`, xQS, y0 + 16);
   }
   cx.restore();
 }
@@ -194,7 +196,7 @@ function drawEquilibrium() {
   cx.fillText('E', tx(QE) + 10, ty(PE) - 8);
   
   cx.font = 'bold 12px Arial'; cx.fillStyle = '#333'; cx.textAlign = 'center';
-  cx.fillText('Qe', tx(QE), ty(0) + 32);
+  cx.fillText('Qe', tx(QE), ty(0) + 16);
 }
 
 function draw() {
@@ -202,8 +204,8 @@ function draw() {
   drawBackgroundZones();
   drawGrid();
   drawInteractiveZone();
-  drawCurve(p_d, '#1e88e5', 'D', 42); // Poptávka
-  drawCurve(p_s, '#e53935', 'S', 40); // Nabídka
+  drawCurve(p_d, '#1e88e5', 'D (Poptávka)', 40); // Poptávka
+  drawCurve(p_s, '#e53935', 'S (Nabídka)', 38); // Nabídka
   drawEquilibrium();
   drawAxes();
 }
