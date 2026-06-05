@@ -178,4 +178,99 @@ function drawInteractiveZone() {
     // Popisky Qd a Qs na ose Q (přesně jako na nákresu z učebnice)
     cx.setLineDash([]); cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
     cx.fillStyle = '#1e88e5'; cx.fillText(`Qd`, xQD, y0 + 32);
-    cx.fillStyle = '#e53935'; cx.fillText(`Qs`, xQS, y0 + 32
+    cx.fillStyle = '#e53935'; cx.fillText(`Qs`, xQS, y0 + 32);
+  }
+  cx.restore();
+}
+
+function drawEquilibrium() {
+  cx.save(); cx.setLineDash([3, 3]); cx.strokeStyle = '#777'; cx.lineWidth = 1;
+  ln(tx(QE), ty(PE), tx(QE), ty(0));
+  ln(tx(QE), ty(PE), ML, ty(PE));
+  cx.restore();
+
+  cx.beginPath(); cx.arc(tx(QE), ty(PE), 6, 0, Math.PI * 2);
+  cx.fillStyle = '#fff'; cx.fill();
+  cx.strokeStyle = '#222'; cx.lineWidth = 2; cx.stroke();
+  
+  cx.fillStyle = '#222'; cx.font = 'bold 13px Arial';
+  cx.fillText('E', tx(QE) + 10, ty(PE) - 8);
+  
+  cx.font = 'bold 12px Arial'; cx.fillStyle = '#333'; cx.textAlign = 'center';
+  cx.fillText('Qe', tx(QE), ty(0) + 32);
+}
+
+function draw() {
+  cx.clearRect(0, 0, W, H);
+  drawBackgroundZones();
+  drawGrid();
+  drawInteractiveZone();
+  drawCurve(p_d, '#1e88e5', 'D', 42); // Modrá poptávka
+  drawCurve(p_s, '#e53935', 'S', 40); // Červená nabídka
+  drawEquilibrium();
+  drawAxes();
+}
+
+function arrowFor(val, ref) {
+  if (val - ref > 0.1) return { a: '↑', cls: 'up' };
+  if (ref - val > 0.1) return { a: '↓', cls: 'dn' };
+  return { a: '≈', cls: 'eq' };
+}
+function indRow(label, val, ref) {
+  const { a, cls } = arrowFor(val, ref);
+  return `<div class="row"><span class="lbl">${label}</span><span class="${cls}">${a}</span><span class="num">${val.toFixed(1)}</span></div>`;
+}
+
+function updatePanel() {
+  const rowsDiv = document.getElementById('rows');
+  const noteDiv = document.getElementById('note');
+  
+  if (selP === null) {
+    rowsDiv.innerHTML = '';
+    return;
+  }
+
+  const p = selP; const qd = q_d(p); const qs = q_s(p); const diff = qs - qd;
+  rowsDiv.innerHTML = indRow('Cena (P)', p, PE) + indRow('Poptávka (Qd)', qd, QE) + indRow('Nabídka (Qs)', qs, QE);
+
+  let statusText = '';
+  let finalCalculations = '';
+
+  if (p > PE) {
+    statusText = '<span class="surplus-txt">🟢 P > Pe → Tržní přebytek</span><br>Cena je moc vysoká. Výrobci nabízí víc, než lidé chtějí koupit. Vzniká tlak na snížení ceny.';
+    finalCalculations = `<br><br><span class="surplus-txt">Celkový přebytek: ${diff.toFixed(1)}</span>`;
+  } else if (p < PE && p >= 10) {
+    statusText = '<span class="shortage-txt">🟡 P < Pe → Tržní nedostatek</span><br>Nízká cena láká kupující, ale firmám se nechce vyrábět. Zboží je nedostatek, cena poletí vzhůru.';
+    finalCalculations = `<br><br><span class="shortage-txt">Celkový nedostatek: ${Math.abs(diff).toFixed(1)}</span>`;
+  } else {
+    statusText = '<span class="surplus-txt">🔴 P < 10 → Nulová nabídka</span><br>Při extrémně nízké ceně nikdo nic nevyrobí.';
+  }
+
+  noteDiv.innerHTML = `<b>Tržní stav při P = ${p.toFixed(1)}</b><br><br>${statusText}${finalCalculations}`;
+}
+
+function handleEvent(e) {
+  const rect = cv.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+
+  if (x >= ML && x <= ML + PW && y >= MT && y <= MT + PH) {
+    selP = Math.max(0, Math.min(CMAX, cFromY(y)));
+    draw();
+    updatePanel();
+  }
+}
+
+cv.addEventListener('mousedown', e => { isDragging = true; handleEvent(e); });
+window.addEventListener('mousemove', e => { if (isDragging) handleEvent(e); });
+window.addEventListener('mouseup', () => { isDragging = false; });
+cv.addEventListener('click', handleEvent);
+
+// Úvodní start
+updatePanel();
+draw();
+</script>
+</body>
+</html>
