@@ -5,35 +5,18 @@ cat > /mnt/user-data/outputs/supply-demand.html << 'HTMLEOF'
 <meta charset="UTF-8">
 <title>Nabídka a poptávka</title>
 <style>
-  body {
-    margin: 0; padding: 16px;
-    font-family: Arial, sans-serif;
-    background: #eee;
-    display: flex; gap: 20px; align-items: flex-start;
-  }
-  canvas { background: white; cursor: crosshair; display: block; }
-  #panel {
-    background: white; padding: 16px;
-    min-width: 220px; border: 1px solid #ccc;
-  }
+  body { margin: 0; padding: 16px; font-family: Arial, sans-serif; background: #eee; display: flex; gap: 20px; align-items: flex-start; }
+  canvas { background: white; cursor: crosshair; display: block; border: 1px solid #ddd; }
+  #panel { background: white; padding: 16px; min-width: 220px; border: 1px solid #ccc; }
   h3 { margin: 0 0 10px; font-size: 14px; }
-  .row {
-    display: flex; align-items: center;
-    gap: 10px; padding: 8px 0;
-    border-bottom: 1px solid #f0f0f0;
-  }
+  .row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
   .lbl { font-weight: bold; font-size: 13px; min-width: 55px; }
   .up  { color: #cc0000; font-size: 28px; font-weight: bold; line-height: 1; }
   .dn  { color: #008800; font-size: 28px; font-weight: bold; line-height: 1; }
   .eq  { color: #999966; font-size: 28px; line-height: 1; }
   .num { font-size: 12px; color: #333; font-weight: bold; }
   #hint { font-size: 12px; color: #999; margin: 5px 0; line-height: 1.5; }
-  #note {
-    font-size: 12px; color: #555;
-    margin-top: 12px; border-top: 1px solid #eee;
-    padding-top: 10px; line-height: 1.6;
-  }
-  .profit-txt { color: #006600; font-weight: bold; }
+  #note { font-size: 12px; color: #555; margin-top: 12px; border-top: 1px solid #eee; padding-top: 10px; line-height: 1.6; }
   .loss-txt { color: #cc0000; font-weight: bold; }
 </style>
 </head>
@@ -41,14 +24,23 @@ cat > /mnt/user-data/outputs/supply-demand.html << 'HTMLEOF'
 <canvas id="c" width="590" height="510"></canvas>
 <div id="panel">
   <h3>Změna od rovnováhy</h3>
-  <div id="rows">
-    <div id="hint">Klikni na osu P (vlevo) nebo do grafu → výběr P</div>
-  </div>
+  <div id="rows"></div>
   <div id="note"></div>
 </div>
 
 <script>
-// ─── SETUP ───────────────────────────────────────────────────────
+// OCHRANA: Pokud prohlížeč narazí na chybu, vypíše ji přímo do plátna
+window.onerror = function(msg, url, line) {
+  const c = document.getElementById('c');
+  if (c) {
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = 'red'; ctx.font = 'bold 16px Arial';
+    ctx.fillText('CHYBA: ' + msg, 20, 30);
+    ctx.fillText('ŘÁDEK: ' + line, 20, 60);
+  }
+  return false;
+};
+
 const cv = document.getElementById('c');
 const cx = cv.getContext('2d');
 const W = 590, H = 510;
@@ -57,41 +49,31 @@ const PW = W - ML - MR;
 const PH = H - MT - MB;
 const QMAX = 50, CMAX = 60;
 
-// ─── ECONOMIC MODEL ──────────────────────────────────────────────
 const p_d = Q => 60 * Math.exp(-0.0277 * Q);
 const p_s = Q => 10 + 0.032 * Q * Q;
-
 const q_d = P => {
   if (P >= 60) return 0;
   if (P <= 0.1) return QMAX;
   return Math.max(0, Math.min(QMAX, -Math.log(P / 60) / 0.0277));
 };
-
 const q_s = P => {
   if (P <= 10) return 0;
   return Math.max(0, Math.min(QMAX, Math.sqrt((P - 10) / 0.032)));
 };
 
-const QE = 25;
-const PE = 30;
-
-// ─── COORD TRANSFORMS ────────────────────────────────────────────
+const QE = 25, PE = 30;
 const tx    = Q => ML + Q / QMAX * PW;
 const ty    = C => MT + PH - C / CMAX * PH;
 const cFrom = y => CMAX - (y - MT) / PH * CMAX;
 
-// ─── STATE ───────────────────────────────────────────────────────
-let selP = 40; // Výchozí vybraná cena
+let selP = 40;
 
-// ─── DRAWING HELPERS ─────────────────────────────────────────────
-function ln(x1, y1, x2, y2) {
-  cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y2); cx.stroke();
-}
+function ln(x1, y1, x2, y2) { cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y2); cx.stroke(); }
 
 function drawGrid() {
   cx.strokeStyle = '#f0f0f0'; cx.lineWidth = 1;
-  for (let q = 5; q < QMAX; q += 5) ln(tx(q), MT, tx(q), MT + PH);
-  for (let c = 5; c < CMAX; c += 5) ln(ML, ty(c), ML + PW, ty(c));
+  for (let q = 5; q <= QMAX; q += 5) ln(tx(q), MT, tx(q), MT + PH);
+  for (let c = 5; c <= CMAX; c += 5) ln(ML, ty(c), ML + PW, ty(c));
 }
 
 function drawAxes() {
@@ -114,7 +96,6 @@ function drawAxes() {
   }
 }
 
-// ─── SURPLUS / SHORTAGE BAR ──────────────────────────────────────
 function drawInteractiveZone() {
   if (selP === null) return;
   const p = selP;
@@ -123,18 +104,13 @@ function drawInteractiveZone() {
   const yP = ty(p);
 
   cx.save();
-  
-  // Vodorovná čára vybrané ceny
   cx.setLineDash([4, 4]); cx.strokeStyle = '#666'; cx.lineWidth = 1;
   ln(ML, yP, ML + PW, yP);
   cx.setLineDash([]);
-  
   cx.fillStyle = '#333'; cx.font = 'bold 11px Arial';
   cx.fillText('P=' + p.toFixed(1), 5, yP + 4);
 
-  // Vodorovný obdélník mezi křivkami
   if (p > PE + 0.1) {
-    // Přebytek
     const x1 = tx(qd), x2 = tx(qs);
     cx.fillStyle = 'rgba(215, 50, 50, 0.2)';
     cx.strokeStyle = '#cc0000'; cx.lineWidth = 1.5;
@@ -143,7 +119,6 @@ function drawInteractiveZone() {
     cx.fillStyle = '#cc0000'; cx.font = 'bold 11px Arial'; cx.textAlign = 'center';
     cx.fillText('Přebytek: ' + (qs - qd).toFixed(1), (x1 + x2)/2, yP - 10);
   } else if (p < PE - 0.1 && p >= 10) {
-    // Nedostatek
     const x1 = tx(qs), x2 = tx(qd);
     cx.fillStyle = 'rgba(235, 175, 0, 0.2)';
     cx.strokeStyle = '#cc8800'; cx.lineWidth = 1.5;
@@ -166,7 +141,6 @@ function drawCurve(fn, color, label, lblQ) {
     else cx.lineTo(tx(q), y);
   }
   cx.stroke(); cx.restore();
-  
   cx.fillStyle = color; cx.font = 'bold 13px Arial';
   cx.fillText(label, tx(lblQ) + 4, ty(fn(lblQ)) - 4);
 }
@@ -176,15 +150,64 @@ function drawEquilibrium() {
   ln(tx(QE), ty(PE), tx(QE), ty(0));
   ln(tx(QE), ty(PE), ML, ty(PE));
   cx.restore();
-
   cx.beginPath(); cx.arc(tx(QE), ty(PE), 5.5, 0, Math.PI * 2);
   cx.fillStyle = '#fff'; cx.fill();
   cx.strokeStyle = '#333'; cx.lineWidth = 2; cx.stroke();
-  
   cx.fillStyle = '#333'; cx.font = 'bold 11px Arial'; cx.textAlign = 'center';
   cx.fillText('E (Q=25, P=30)', tx(QE), ty(PE) - 12);
 }
 
 function draw() {
   cx.clearRect(0, 0, W, H);
-  cx.fillStyle = '#fff'; cx.fillRect(0,
+  cx.fillStyle = '#fff'; cx.fillRect(0, 0, W, H);
+  drawGrid();
+  drawInteractiveZone();
+  drawAxes();
+  drawCurve(p_d, '#1e88e5', 'D', 42); 
+  drawCurve(p_s, '#e53935', 'S', 40); 
+  drawEquilibrium();
+}
+
+function arrowFor(val, ref) {
+  const d = val - ref;
+  if (d >  0.1) return { a: '↑', cls: 'up' };
+  if (d < -0.1) return { a: '↓', cls: 'dn' };
+  return { a: '≈', cls: 'eq' };
+}
+
+function indRow(label, val, ref) {
+  const { a, cls } = arrowFor(val, ref);
+  return `<div class="row"><span class="lbl">${label}</span><span class="${cls}">${a}</span><span class="num">${val.toFixed(1)}</span></div>`;
+}
+
+function updatePanel() {
+  const rowsDiv = document.getElementById('rows');
+  const noteDiv = document.getElementById('note');
+  if (selP === null) return;
+  const p = selP;
+  const qd = q_d(p);
+  const qs = q_s(p);
+
+  rowsDiv.innerHTML = 
+    indRow('Cena (P)', p, PE) + 
+    indRow('Poptávka', qd, QE) + 
+    indRow('Nabídka', qs, QE);
+
+  let statusText = '';
+  if (p > PE + 0.1) {
+    statusText = `<b>🟢 P > Pe → Tržní přebytek</b><br>Výrobci nabízí více, než spotřebitelé kupují.<br><br><span class="loss-txt">Přebytek: ${(qs - qd).toFixed(1)}</span>`;
+  } else if (p < PE - 0.1 && p >= 10) {
+    statusText = `<b>🟡 P < Pe → Tržní nedostatek</b><br>Spotřebitelé chtějí více, než se vyrábí.<br><br><span style="color:#cc8800; font-weight:bold;">Nedostatek: ${(qd - qs).toFixed(1)}</span>`;
+  } else if (p < 10) {
+    statusText = `<b>🔴 P < 10 → Nulová nabídka</b><br>Cena nepokryje náklady výrobců.`;
+  } else {
+    statusText = `<b>🟢 Tržní rovnováha</b><br>Trh je vyčištěn (Qd = Qs).`;
+  }
+  noteDiv.innerHTML = `<b>Při ceně P = ${p.toFixed(1)}</b><br><br>${statusText}`;
+}
+
+let isDragging = false;
+function handleEvent(e) {
+  const rect = cv.getBoundingClientRect();
+  const y = (e.clientY - rect.top) * H / rect.height;
+  let
