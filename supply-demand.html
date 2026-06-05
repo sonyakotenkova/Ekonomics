@@ -68,14 +68,14 @@ function ln(x1, y1, x2, y2) { cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y
 
 function drawBackgroundZones() {
   // Horní jemná oblast pro přebytek
-  cx.fillStyle = 'rgba(255, 235, 235, 0.2)';
+  cx.fillStyle = 'rgba(255, 235, 235, 0.15)';
   cx.fillRect(ML, ty(CMAX), PW, ty(PE) - ty(CMAX));
   cx.fillStyle = 'rgba(180, 50, 50, 0.3)';
   cx.font = 'italic 12px Arial';
   cx.fillText('přebytek (surplus)', ML + PW - 115, ty(CMAX) + 20);
 
   // Dolní jemná oblast pro nedostatek
-  cx.fillStyle = 'rgba(255, 250, 220, 0.2)';
+  cx.fillStyle = 'rgba(255, 250, 220, 0.15)';
   cx.fillRect(ML, ty(PE), PW, ty(10) - ty(PE));
   cx.fillStyle = 'rgba(160, 110, 20, 0.3)';
   cx.fillText('nedostatek (shortage)', ML + PW - 130, ty(PE) + 20);
@@ -141,59 +141,67 @@ function drawInteractiveZone() {
 
   cx.save();
   
-  // OPRAVA: Vykreslování trojúhelníkových ploch vycházejících Z BODU OPTIMA (E)
+  // OPRAVENÁ LOGIKA: Perfektní geometrické klíny ohraničené linkou ceny P a křivkami D a S
   if (p > PE) {
-    cx.fillStyle = 'rgba(215, 50, 50, 0.22)';
+    cx.fillStyle = 'rgba(215, 50, 50, 0.25)';
     cx.strokeStyle = 'rgba(180, 30, 30, 0.7)';
     cx.lineWidth = 1.5;
 
     cx.beginPath();
-    cx.moveTo(xE, yE);   // Začátek v optimu E
+    cx.moveTo(xE, yE); // Začíná v optimu E
     
-    // Vykreslení podél křivky poptávky nahoru k vybrané ceně
-    for (let q = QE; q >= qd; q -= 0.5) { cx.lineTo(tx(q), ty(p_d(q))); }
-    cx.lineTo(xQD, yP);
-    cx.lineTo(xQS, yP);  // Vodorovná úsečka reprezentující velikost přebytku
+    // Levá strana: křivka poptávky směrem nahoru k ceně P
+    for (let q = QE; q >= qd; q -= 0.5) {
+      cx.lineTo(tx(q), ty(p_d(q)));
+    }
+    cx.lineTo(xQD, yP); // Horní levý roh na hladině ceny P
+    cx.lineTo(xQS, yP); // Spojnice doprava na hladině ceny P (velikost přebytku)
     
-    // Vykreslení podél křivky nabídky dolů zpět do optima E
-    for (let q = qs; q >= QE; q -= 0.5) { cx.lineTo(tx(q), ty(p_s(q))); }
+    // Pravá strana: křivka nabídky směrem dolů zpět do optima E
+    for (let q = qs; q >= QE; q -= 0.5) {
+      cx.lineTo(tx(q), ty(p_s(q)));
+    }
     cx.closePath();
     cx.fill(); cx.stroke();
 
-    // Text popisku uvnitř trojúhelníku přebytku
+    // Výpočet středu vodorovné čáry pro popisek
     cx.fillStyle = '#cc0000'; cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
-    cx.fillText(`Přebytek: ${(qs - qd).toFixed(1)}`, xE, yP - 12);
+    cx.fillText(`Přebytek: ${(qs - qd).toFixed(1)}`, xQD + (xQS - xQD)/2, yP - 12);
 
   } else if (p < PE && p >= 10) {
-    cx.fillStyle = 'rgba(235, 175, 0, 0.22)';
+    cx.fillStyle = 'rgba(235, 175, 0, 0.25)';
     cx.strokeStyle = 'rgba(200, 140, 30, 0.7)';
     cx.lineWidth = 1.5;
 
     cx.beginPath();
-    cx.moveTo(xE, yE);   // Začátek v optimu E
+    cx.moveTo(xE, yE); // Začíná v optimu E
     
-    // Vykreslení podél křivky poptávky dolů k vybrané ceně
-    for (let q = QE; q <= qd; q += 0.5) { cx.lineTo(tx(q), ty(p_d(q))); }
-    cx.lineTo(xQD, yP);
-    cx.lineTo(xQS, yP);  // Vodorovná úsečka reprezentující velikost nedostatku
+    // Levá strana: křivka nabídky směrem dolů k ceně P
+    for (let q = QE; q >= qs; q -= 0.5) {
+      cx.lineTo(tx(q), ty(p_s(q)));
+    }
+    cx.lineTo(xQS, yP); // Dolní levý roh na hladině ceny P
+    cx.lineTo(xQD, yP); // Spojnice doprava na hladině ceny P (velikost nedostatku)
     
-    // Vykreslení podél křivky nabídky nahoru zpět do optima E
-    for (let q = qs; q <= QE; q += 0.5) { cx.lineTo(tx(q), ty(p_s(q))); }
+    // Pravá strana: křivka poptávky směrem nahoru zpět do optima E
+    for (let q = qd; q >= QE; q -= 0.5) {
+      cx.lineTo(tx(q), ty(p_d(q)));
+    }
     cx.closePath();
     cx.fill(); cx.stroke();
 
-    // Text popisku uvnitř trojúhelníku nedostatku
+    // Výpočet středu vodorovné čáry pro popisek
     cx.fillStyle = '#c68400'; cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
-    cx.fillText(`Nedostatek: ${(qd - qs).toFixed(1)}`, xE, yP + 22);
+    cx.fillText(`Nedostatek: ${(qd - qs).toFixed(1)}`, xQS + (xQD - xQS)/2, yP + 22);
   }
 
   // Vodící čárkované čáry k osám
   cx.setLineDash([5, 4]); cx.strokeStyle = '#555'; cx.lineWidth = 1.2;
-  ln(ML, yP, Math.max(xQD, xQS), yP);
+  ln(ML, yP, Math.max(xQD, xQS), yP); // Vodorovná linka k ose P
   
   if (p >= 10) {
-    ln(xQD, yP, xQD, y0);
-    ln(xQS, yP, xQS, y0);
+    ln(xQD, yP, xQD, y0); // Svislá dolů z průsečíku Poptávky
+    ln(xQS, yP, xQS, y0); // Svislá dolů z průsečíku Nabídky
     
     // Názvy Qd a Qs na ose Q
     cx.setLineDash([]); cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
