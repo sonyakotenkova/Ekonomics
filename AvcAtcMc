@@ -1,0 +1,352 @@
+cat > /mnt/user-data/outputs/cost-curves.html << 'HTMLEOF'
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<title>Nákladové křivky</title>
+<style>
+  body {
+    margin: 0; padding: 16px;
+    font-family: Arial, sans-serif;
+    background: #eee;
+    display: flex; gap: 20px; align-items: flex-start;
+  }
+  canvas { background: white; cursor: crosshair; display: block; }
+  #panel {
+    background: white; padding: 16px;
+    min-width: 220px; border: 1px solid #ccc;
+  }
+  h3 { margin: 0 0 10px; font-size: 14px; }
+  .row {
+    display: flex; align-items: center;
+    gap: 10px; padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .lbl { font-weight: bold; font-size: 13px; min-width: 55px; }
+  .up  { color: #cc0000; font-size: 28px; font-weight: bold; line-height: 1; }
+  .dn  { color: #008800; font-size: 28px; font-weight: bold; line-height: 1; }
+  .eq  { color: #999966; font-size: 28px; line-height: 1; }
+  .num { font-size: 11px; color: #aaa; }
+  #hint { font-size: 12px; color: #999; margin: 5px 0; line-height: 1.5; }
+  #note {
+    font-size: 11px; color: #555;
+    margin-top: 12px; border-top: 1px solid #eee;
+    padding-top: 10px; line-height: 1.6;
+  }
+  .profit-txt { color: #006600; font-weight: bold; }
+  .loss-txt { color: #cc0000; font-weight: bold; }
+</style>
+</head>
+<body>
+<canvas id="c" width="590" height="510"></canvas>
+<div id="panel">
+  <h3>Změna od optima</h3>
+  <div id="rows">
+    <div id="hint">Klikni na graf → výběr Q<br>Klikni na osu P (vlevo) → výběr P</div>
+  </div>
+  <div id="note"></div>
+</div>
+
+<script>
+// ─── SETUP ───────────────────────────────────────────────────────
+const cv = document.getElementById('c');
+const cx = cv.getContext('2d');
+const W = 590, H = 510;
+const ML = 55, MR = 20, MT = 22, MB = 52;
+const PW = W - ML - MR;   // 515
+const PH = H - MT - MB;   // 436
+const QMAX = 50, CMAX = 58;
+
+// ─── ECONOMIC MODEL ──────────────────────────────────────────────
+const FC  = 80;
+const avc = Q => 35 - 3*Q + 0.15*Q*Q;
+const mc  = Q => 35 - 6*Q + 0.45*Q*Q;
+const atc = Q => avc(Q) + FC / Q;
+
+function argmin(fn, lo, hi) {
+  let bQ = lo, bV = fn(lo);
+  for (let q = lo; q <= hi; q += 0.05)
+    if (fn(q) < bV) { bQ = q; bV = fn(q); }
+  return { Q: +bQ.toFixed(1), C: +bV.toFixed(1) };}
+const OA = argmin(avc,  5, 20);   // min AVC
+const OB = argmin(atc,  8, 25);   // min ATC
+
+// ─── COORD TRANSFORMS ────────────────────────────────────────────
+const tx    = Q => ML + Q / QMAX * PW;
+const ty    = C => MT + PH - C / CMAX * PH;
+const qFrom = x => (x - ML) / PW * QMAX;
+const cFrom = y => CMAX - (y - MT) / PH * CMAX;
+
+// ─── STATE ───────────────────────────────────────────────────────
+let sel = null;  // { mode: 'Q'|'P', val: number }
+
+// ─── DRAWING HELPERS ─────────────────────────────────────────────
+function ln(x1, y1, x2, y2) {
+  cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y2); cx.stroke();
+}
+
+// ─── COLORED ZONES ───────────────────────────────────────────────
+function drawZones() {
+  const yMinAVC = ty(OA.C);
+  const yMinATC = ty(OB.C);
+  const yBottom = MT + PH;
+
+  cx.fillStyle = 'rgba(215, 50, 50, 0.08)';
+  cx.fillRect(ML, yMinAVC, PW, yBottom - yMinAVC);
+  cx.fillStyle = 'rgba(235, 175, 0, 0.08)';
+  cx.fillRect(ML, yMinATC, PW, yMinAVC - yMinATC);
+  cx.fillStyle = 'rgba(55, 185, 55, 0.08)';
+  cx.fillRect(ML, MT, PW, yMinATC - MT);
+
+  cx.save(); cx.setLineDash([5, 4]); cx.lineWidth = 1;
+  cx.strokeStyle = 'rgba(200, 50, 50, 0.3)';
+  ln(ML, yMinAVC, ML + PW, yMinAVC);
+  cx.strokeStyle = 'rgba(50, 160, 50, 0.3)';
+  ln(ML, yMinATC, ML + PW, yMinATC);
+  cx.restore();
+
+  cx.textAlign = 'right'; cx.font = '10px Arial';
+  cx.fillStyle = 'rgba(185, 30, 30, 0.6)';
+  cx.fillText('zánik firmy', ML + PW - 5, (yMinAVC + yBottom) / 2 + 4);
+  cx.fillStyle = 'rgba(155, 115, 0, 0.6)';
+  cx.fillText('ztráta, vyrábí', ML + PW - 5, (yMinATC + yMinAVC) / 2 + 4);
+  cx.fillStyle = 'rgba(25, 145, 25, 0.6)';
+  cx.fillText('zisk', ML + PW - 5, (MT + yMinATC) / 2 + 4);
+  cx.textAlign = 'left';
+}
+
+function drawGrid() {
+  cx.strokeStyle = '#f0f0f0'; cx.lineWidth = 1;
+  for (let q = 5; q < QMAX; q += 5) ln(tx(q), MT, tx(q), MT + PH);
+  for (let c = 5; c < CMAX; c += 5) ln(ML, ty(c), ML + PW, ty(c));
+}
+
+function drawAxes() {
+  cx.strokeStyle = '#444'; cx.lineWidth = 1.5;
+  ln(ML, MT + PH, ML + PW + 10, MT + PH);
+  ln(ML, MT + PH, ML, MT - 10);
+  cx.fillStyle = '#333'; cx.font = '13px Arial';
+  cx.fillText('Q', ML + PW + 14, MT + PH + 5);
+  cx.fillText('P, C', ML - 24, MT - 14);
+  cx.font = '10px Arial'; cx.fillStyle = '#666';
+  for (let q = 10; q <= QMAX; q += 10) {
+    cx.strokeStyle = '#999'; cx.lineWidth = 1;
+    ln(tx(q), MT + PH, tx(q), MT + PH + 5);
+    cx.fillText(q, tx(q) - 6, MT + PH + 17);
+  }
+  for (let c = 10; c <= 55; c += 10) {
+    cx.strokeStyle = '#999'; cx.lineWidth = 1;
+    ln(ML - 5, ty(c), ML, ty(c));
+    cx.fillText(c, ML - 28, ty(c) + 4);
+  }
+}
+
+// ─── PROFIT/LOSS RECTANGLE ───────────────────────────────────────
+function drawProfitLoss() {
+  if (!sel) return;
+
+  let q, p;
+  if (sel.mode === 'Q') {
+    q = sel.val;
+    p = mc(q); 
+  } else {
+    p = sel.val;
+    // Výpočet Q, kde MC = P (rostoucí část křivky)
+    const D = 36 - 1.8 * (35 - p);
+    if (D < 0) return; // Cena je příliš nízká
+    q = (6 + Math.sqrt(D)) / 0.9;
+    if (q <= 0 || q > QMAX) return;
+  }
+
+  const cost = atc(q);
+  const diff = p - cost;
+  const total = diff * q;
+
+  if (p < 0 || p > CMAX * 1.2) return;
+
+  cx.save();
+  const yP = ty(p);
+  const yATC = ty(cost);
+  const x0 = ML;
+  const xQ = tx(q);
+
+  if (diff >= 0) {
+    cx.fillStyle = 'rgba(55, 185, 55, 0.4)'; // Zelený zisk
+    cx.strokeStyle = 'rgba(30, 140, 30, 0.9)';
+  } else {
+    cx.fillStyle = 'rgba(215, 50, 50, 0.4)'; // Červená ztráta
+    cx.strokeStyle = 'rgba(180, 30, 30, 0.9)';
+  }
+
+  const rectY = Math.min(yP, yATC);
+  const rectH = Math.abs(yP - yATC);
+  const rectW = xQ - x0;
+
+  cx.fillRect(x0, rectY, rectW, rectH);
+  cx.lineWidth = 1.5;
+  cx.setLineDash([]);
+  cx.strokeRect(x0, rectY, rectW, rectH);
+
+  const txt = (diff >= 0 ? 'Zisk: ' : 'Ztráta: ') + Math.abs(total).toFixed(1);
+  cx.fillStyle = '#111';
+  cx.font = 'bold 12px Arial';
+  cx.textAlign = 'center';
+  cx.textBaseline = 'middle';
+
+  if (rectH > 16 && rectW > 50) {
+      cx.fillText(txt, x0 + rectW / 2, rectY + rectH / 2);
+  } else {
+      cx.fillText(txt, x0 + rectW / 2, rectY - 10);
+  }
+  cx.restore();
+}
+
+// ─── CURVE ───────────────────────────────────────────────────────
+function drawCurve(fn, color, q0, q1, label, lblQ) {
+  cx.save();
+  cx.beginPath(); cx.rect(ML, MT, PW, PH); cx.clip();
+  cx.beginPath(); cx.strokeStyle = color; cx.lineWidth = 2.5;
+  let first = true;
+  for (let q = q0; q <= q1; q += 0.12) {
+    const y = ty(fn(q));
+    if (first) { cx.moveTo(tx(q), y); first = false; }
+    else        cx.lineTo(tx(q), y);
+  }
+  cx.stroke(); cx.restore();
+  const lc = fn(lblQ);
+  if (lc >= 1 && lc < CMAX - 0.5) {
+    cx.fillStyle = color; cx.font = 'bold 13px Arial';
+    cx.fillText(label, tx(lblQ) + 4, ty(lc) - 4);
+  }
+}
+
+function drawOptimum({ Q, C }, color, label) {
+  cx.save(); cx.setLineDash([4, 4]); cx.strokeStyle = '#bbb'; cx.lineWidth = 1;
+  ln(tx(Q), ty(C), tx(Q), ty(0));
+  ln(tx(Q), ty(C), ML, ty(C));
+  cx.restore();
+  cx.beginPath(); cx.arc(tx(Q), ty(C), 5.5, 0, Math.PI * 2);
+  cx.fillStyle = '#fff'; cx.fill();
+  cx.strokeStyle = color; cx.lineWidth = 2.5; cx.stroke();
+  cx.fillStyle = '#333'; cx.font = '10px Arial';
+  cx.fillText(`${label} (Q=${Q})`, tx(Q) + 8, ty(C) - 6);
+}
+
+function drawSelection() {
+  if (!sel) return;
+  cx.save(); cx.setLineDash([6, 4]); cx.strokeStyle = '#333'; cx.lineWidth = 1.5;
+  
+  let q, p;
+  if (sel.mode === 'Q') {
+    q = sel.val; p = mc(q);
+    const x = tx(q);
+    ln(x, MT, x, MT + PH); // Vertikální čára Q
+    cx.beginPath(); cx.arc(x, ty(p), 5, 0, Math.PI * 2); cx.fillStyle = '#bb2222'; cx.fill();
+    cx.beginPath(); cx.arc(x, ty(avc(q)), 4, 0, Math.PI * 2); cx.fillStyle = '#3344cc'; cx.fill();
+    cx.beginPath(); cx.arc(x, ty(atc(q)), 4, 0, Math.PI * 2); cx.fillStyle = '#226622'; cx.fill();
+    cx.fillStyle = '#333'; cx.font = 'bold 11px Arial';
+    cx.fillText('Q=' + q, x - 16, MT + PH + 33);
+  } else {
+    p = sel.val;
+    ln(ML, ty(p), ML + PW, ty(p)); // Horizontální čára P
+    cx.fillStyle = '#333'; cx.font = 'bold 11px Arial';
+    cx.fillText('P=' + p, 2, ty(p) + 4);
+  }
+  cx.restore();
+}
+
+function draw() {
+  cx.clearRect(0, 0, W, H);
+  cx.fillStyle = '#fff'; cx.fillRect(0, 0, W, H);
+  drawZones();
+  drawGrid();
+  drawProfitLoss(); // Kreslíme obdélník zisku/ztráty pod křivkami
+  drawAxes();
+  drawCurve(atc, '#226622',  3, 40, 'ATC', 20);
+  drawCurve(avc, '#3344cc',  1, 28, 'AVC', 17);
+  drawCurve(mc,  '#bb2222',  1, 18, 'MC',  11);
+  drawOptimum(OA, '#3344cc', 'min AVC');
+  drawOptimum(OB, '#226622', 'min ATC');
+  drawSelection();
+}
+
+// ─── INDICATOR PANEL ─────────────────────────────────────────────
+function arrowFor(val, ref) {
+  const d = val - ref;
+  if (d >  0.3) return { a: '↑', cls: 'up' };
+  if (d < -0.3) return { a: '↓', cls: 'dn' };
+  return { a: '≈', cls: 'eq' };
+}
+function indRow(label, val, ref) {
+  const { a, cls } = arrowFor(val, ref);
+  return `<div class="row"><span class="lbl">${label}</span><span class="${cls}">${a}</span><span class="num">${val.toFixed(1)}</span></div>`;
+}
+
+function updatePanel() {
+  const rowsDiv = document.getElementById('rows');
+  const noteDiv = document.getElementById('note');
+  if (!sel) {
+    rowsDiv.innerHTML = '<div id="hint">Klikni na graf → výběr Q<br>Klikni na osu P (vlevo) → výběr P</div>';
+    noteDiv.innerHTML = `<b>Optima:</b><br>min AVC: Q=${OA.Q}, C=${OA.C}<br>min ATC: Q=${OB.Q}, C=${OB.C}`;
+    return;
+  }
+
+  let q, p, isQMode = (sel.mode === 'Q');
+  
+  if (isQMode) {
+    q = sel.val; p = mc(q);
+    rowsDiv.innerHTML =
+      indRow('Q',   q,        OB.Q) +
+      indRow('MC',  mc(q),    mc(OB.Q)) +
+      indRow('AVC', avc(q),   OA.C) +
+      indRow('ATC', atc(q),   OB.C);
+  } else {
+    p = sel.val;
+    const D = 36 - 1.8 * (35 - p);
+    if (D >= 0) {
+      q = (6 + Math.sqrt(D)) / 0.9;
+    } else { q = 0; }
+    
+    const { a, cls } = arrowFor(p, OB.C);
+    rowsDiv.innerHTML = `<div class="row"><span class="lbl">P</span><span class="${cls}">${a}</span><span class="num">${p}</span></div>`;
+  }
+
+  const profit = q > 0 ? (p - atc(q)) * q : 0;
+  let statusText = p >= OB.C ? '🟢 P ≥ min ATC → Zisk' : 
+                   p >= OA.C ? '🟡 P ≥ min AVC → Ztráta, ale vyrábí' : 
+                               '🔴 P < min AVC → Zánik firmy (nevyplatí se vyrábět)';
+
+  let baseNote = isQMode ? 
+    `<b>Q = ${q}</b><br>P = MC = ${p.toFixed(1)}<br>ATC = ${atc(q).toFixed(1)}<br><br>${statusText}` : 
+    `${statusText}<br>${q > 0 ? `→ Firma zvolí Q = ${q.toFixed(1)} (kde P=MC)` : '→ Křivka MC není dosažena'}`;
+
+  if (q > 0) {
+    let cls = profit >= 0 ? 'profit-txt' : 'loss-txt';
+    let lbl = profit >= 0 ? 'Celkový zisk:' : 'Celková ztráta:';
+    baseNote += `<br><br><span class="${cls}">${lbl} ${Math.abs(profit).toFixed(1)}</span>`;
+  }
+
+  noteDiv.innerHTML = baseNote;
+}
+
+// ─── CLICK ───────────────────────────────────────────────────────
+cv.addEventListener('click', e => {
+  const rect = cv.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * W / rect.width;
+  const y = (e.clientY - rect.top)  * H / rect.height;
+  const inChart = x >= ML && x <= ML + PW && y >= MT && y <= MT + PH;
+  const onQAxis = x >= ML && x <= ML + PW && y > MT + PH && y <= MT + PH + 36;
+  const onPAxis = x >= 0  && x <  ML      && y >= MT     && y <= MT + PH;
+  if (onPAxis) {
+    sel = { mode: 'P', val: Math.max(1, Math.min(55, Math.round(cFrom(y)))) };
+  } else if (inChart || onQAxis) {
+    sel = { mode: 'Q', val: Math.max(1, Math.min(50, Math.round(qFrom(x)))) };
+  }
+  draw(); updatePanel();
+});
+updatePanel(); draw();
+</script>
+</body>
+</html>
+HTMLEOF
+echo "done"
