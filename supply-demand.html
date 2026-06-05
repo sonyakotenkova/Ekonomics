@@ -40,7 +40,7 @@ const PW = W - ML - MR;
 const PH = H - MT - MB;
 const QMAX = 50, CMAX = 60;
 
-// Bezpečné matematické modely chráněné proti nule a záporným číslům
+// Bezpečné ekonomické rovnice
 const p_d = Q => 60 * Math.exp(-0.0277 * Q);
 const p_s = Q => 10 + 0.032 * Q * Q;
 
@@ -55,32 +55,32 @@ const q_s = P => {
   return Math.max(0, Math.min(QMAX, Math.sqrt((P - 10) / 0.032)));
 };
 
-const QE = 25, PE = 30; // Bod rovnováhy E
+const QE = 25, PE = 30; // Bod tržní rovnováhy
 
 const tx = Q => ML + Q / QMAX * PW;
 const ty = C => MT + PH - C / CMAX * PH;
 const cFromY = y => CMAX - (y - MT) / PH * CMAX;
 
-let selP = 45; // Výchozí cena nastavena na přebytek, aby graf hned žil
+let selP = 45; // Výchozí pozice (přebytek) při načtení
 let isDragging = false;
 
 function ln(x1, y1, x2, y2) { cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y2); cx.stroke(); }
 
 function drawBackgroundZones() {
-  // Horní oblast pro přebytek
+  // Horní červenavá oblast (Přebytek)
   cx.fillStyle = 'rgba(255, 235, 235, 0.4)';
   cx.fillRect(ML, ty(CMAX), PW, ty(PE) - ty(CMAX));
   cx.fillStyle = 'rgba(180, 50, 50, 0.4)';
   cx.font = 'italic 12px Arial';
   cx.fillText('přebytek (surplus)', ML + PW - 115, ty(CMAX) + 20);
 
-  // Dolní oblast pro nedostatek
+  // Dolní žlutavá oblast (Nedostatek)
   cx.fillStyle = 'rgba(255, 250, 220, 0.4)';
   cx.fillRect(ML, ty(PE), PW, ty(10) - ty(PE));
   cx.fillStyle = 'rgba(160, 110, 20, 0.4)';
   cx.fillText('nedostatek (shortage)', ML + PW - 130, ty(PE) + 20);
 
-  // Oblast pod nabídkou
+  // Oblast pod minimální cenou nabídky
   cx.fillStyle = '#f9f9f9';
   cx.fillRect(ML, ty(10), PW, ty(0) - ty(10));
 }
@@ -138,33 +138,33 @@ function drawInteractiveZone() {
 
   cx.save();
   
-  // Vykreslení velkých barevných obdélníků dolů k ose Q (styl podle tvého grafu 1)
+  // Vykreslení velkých barevných zón DOLŮ k ose Q (Styl tvého prvního grafu)
   if (p > PE) {
-    // Přebytek: Obdélník padající k ose mezi Qd a Qs
+    // Přebytek: Obdélník padající dolů k ose mezi Qd a Qs
     cx.fillStyle = 'rgba(215, 50, 50, 0.18)';
     cx.strokeStyle = 'rgba(180, 30, 30, 0.6)';
     cx.fillRect(xQD, yP, xQS - xQD, y0 - yP);
     cx.lineWidth = 1.5;
     cx.strokeRect(xQD, yP, xQS - xQD, y0 - yP);
 
-    // Text uvnitř vybarveného obdélníku
+    // Výpočet a zobrazení textu uvnitř vybarveného obdélníku
     cx.fillStyle = '#cc0000'; cx.font = 'bold 13px Arial'; cx.textAlign = 'center';
     cx.fillText(`Přebytek: ${(qs - qd).toFixed(1)}`, xQD + (xQS - xQD) / 2, yP + (y0 - yP) / 2);
 
   } else if (p < PE && p >= 10) {
-    // Nedostatek: Obdélník padající k ose mezi Qs a Qd
+    // Nedostatek: Obdélník padající dolů k ose mezi Qs a Qd
     cx.fillStyle = 'rgba(235, 175, 0, 0.18)';
     cx.strokeStyle = 'rgba(200, 140, 30, 0.6)';
     cx.fillRect(xQS, yP, xQD - xQS, y0 - yP);
     cx.lineWidth = 1.5;
     cx.strokeRect(xQS, yP, xQD - xQS, y0 - yP);
 
-    // Text uvnitř vybarveného obdélníku
+    // Výpočet a zobrazení textu uvnitř vybarveného obdélníku
     cx.fillStyle = '#c68400'; cx.font = 'bold 13px Arial'; cx.textAlign = 'center';
     cx.fillText(`Nedostatek: ${(qd - qs).toFixed(1)}`, xQS + (xQD - xQS) / 2, yP + (y0 - yP) / 2);
   }
 
-  // Vodící čárkované linky k osám
+  // Vodící čárkované linky k osám (Podle tvé učebnice)
   cx.setLineDash([5, 4]); cx.strokeStyle = '#444'; cx.lineWidth = 1.2;
   ln(ML, yP, Math.max(xQD, xQS), yP);
   
@@ -172,7 +172,7 @@ function drawInteractiveZone() {
     ln(xQD, yP, xQD, y0);
     ln(xQS, yP, xQS, y0);
     
-    // Popisky Qd a Qs na ose Q (přesně podle nákresu z učebnice)
+    // Dynamické popisky Qd a Qs přímo na ose Q
     cx.setLineDash([]); cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
     cx.fillStyle = '#1e88e5'; cx.fillText(`Qd`, xQD, y0 + 32);
     cx.fillStyle = '#e53935'; cx.fillText(`Qs`, xQS, y0 + 32);
@@ -202,5 +202,72 @@ function draw() {
   drawBackgroundZones();
   drawGrid();
   drawInteractiveZone();
-  drawCurve(p_d, '#1e88e5', 'D', 42); // Modrá poptávka
-  drawCurve(p_s
+  drawCurve(p_d, '#1e88e5', 'D', 42); // Poptávka
+  drawCurve(p_s, '#e53935', 'S', 40); // Nabídka
+  drawEquilibrium();
+  drawAxes();
+}
+
+function arrowFor(val, ref) {
+  if (val - ref > 0.1) return { a: '↑', cls: 'up' };
+  if (ref - val > 0.1) return { a: '↓', cls: 'dn' };
+  return { a: '≈', cls: 'eq' };
+}
+function indRow(label, val, ref) {
+  const { a, cls } = arrowFor(val, ref);
+  return `<div class="row"><span class="lbl">${label}</span><span class="${cls}">${a}</span><span class="num">${val.toFixed(1)}</span></div>`;
+}
+
+function updatePanel() {
+  const rowsDiv = document.getElementById('rows');
+  const noteDiv = document.getElementById('note');
+  
+  if (selP === null) {
+    rowsDiv.innerHTML = '';
+    return;
+  }
+
+  const p = selP; const qd = q_d(p); const qs = q_s(p); const diff = qs - qd;
+  rowsDiv.innerHTML = indRow('Cena (P)', p, PE) + indRow('Poptávka (Qd)', qd, QE) + indRow('Nabídka (Qs)', qs, QE);
+
+  let statusText = '';
+  let finalCalculations = '';
+
+  if (p > PE) {
+    statusText = '<span class="surplus-txt">🟢 P > Pe → Tržní přebytek</span><br>Cena je moc vysoká. Výrobci nabízí víc, než lidé chtějí koupit. Vzniká tlak na snížení ceny.';
+    finalCalculations = `<br><br><span class="surplus-txt">Celkový přebytek: ${diff.toFixed(1)}</span>`;
+  } else if (p < PE && p >= 10) {
+    statusText = '<span class="shortage-txt">🟡 P < Pe → Tržní nedostatek</span><br>Nízká cena láká kupující, ale firmám se nechce vyrábět. Zboží je nedostatek, cena poletí vzhůru.';
+    finalCalculations = `<br><br><span class="shortage-txt">Celkový nedostatek: ${Math.abs(diff).toFixed(1)}</span>`;
+  } else {
+    statusText = '<span class="surplus-txt">🔴 P < 10 → Nulová nabídka</span><br>Při extrémně nízké ceně se výrobcům nevyplatí produkovat vůbec nic.';
+  }
+
+  noteDiv.innerHTML = `<b>Tržní stav při P = ${p.toFixed(1)}</b><br><br>${statusText}${finalCalculations}`;
+}
+
+function handleEvent(e) {
+  const rect = cv.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+
+  if (x >= ML && x <= ML + PW && y >= MT && y <= MT + PH) {
+    selP = Math.max(0, Math.min(CMAX, cFromY(y)));
+    draw();
+    updatePanel();
+  }
+}
+
+cv.addEventListener('mousedown', e => { isDragging = true; handleEvent(e); });
+window.addEventListener('mousemove', e => { if (isDragging) handleEvent(e); });
+window.addEventListener('mouseup', () => { isDragging = false; });
+cv.addEventListener('click', handleEvent);
+
+// První vykreslení
+updatePanel();
+draw();
+</script>
+</body>
+</html>
