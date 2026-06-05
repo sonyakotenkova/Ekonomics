@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<title>Ekonomické interaktivní modely</title>
+<style>
+  body { 
+    font-family: Arial, sans-serif; 
+    margin: 0; 
+    padding: 20px; 
+    background: #f5f5f5; 
+    display: flex; 
+    flex-direction: column; 
+    gap: 40px; 
+    align-items: center; 
+  }
+  h1 { 
+    color: #222; 
+    margin-bottom: 5px; 
+    text-align: center; 
+  }
+  .graph-container { 
+    background: white; 
+    padding: 20px; 
+    border-radius: 8px; 
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08); 
+    width: 880px; 
+  }
+  .graph-container h2 { 
+    margin-top: 0; 
+    color: #444; 
+    font-size: 18px; 
+    border-bottom: 2px solid #eee; 
+    padding-bottom: 8px; 
+  }
+  iframe { 
+    border: none; 
+    width: 100%; 
+    height: 550px; 
+    display: block; 
+  }
+</style>
+</head>
+<body>
+
+  <h1>Interaktivní ekonomické modely</h1>
+
+  <div class="graph-container">
+    <h2>1. Křivky nákladů v krátkém období (ATC, AVC, MC)</h2>
+    <iframe src="cost-curves.html"></iframe>
+  </div>
+
+  <div class="graph-container">
+    <h2>2. Tržní rovnováha, přebytek a nedostatek (S & D)</h2>
+    <iframe src="supply-demand.html"></iframe>
+  </div>
+
+</body>
+</html>
