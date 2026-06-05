@@ -1,0 +1,242 @@
+cat > /mnt/user-data/outputs/supply-demand.html << 'HTMLEOF'
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<title>Poptávka a nabídka</title>
+<style>
+  body { margin: 0; padding: 16px; font-family: Arial, sans-serif; background: #eee; display: flex; gap: 20px; align-items: flex-start; }
+  canvas { background: white; cursor: crosshair; display: block; }
+  #panel { background: white; padding: 16px; min-width: 220px; border: 1px solid #ccc; }
+  h3 { margin: 0 0 10px; font-size: 14px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+  .lbl { font-weight: bold; font-size: 13px; min-width: 55px; }
+  .up  { color: #cc0000; font-size: 28px; font-weight: bold; line-height: 1; }
+  .dn  { color: #008800; font-size: 28px; font-weight: bold; line-height: 1; }
+  .eq  { color: #999966; font-size: 28px; line-height: 1; }
+  .num { font-size: 11px; color: #aaa; }
+  #hint { font-size: 12px; color: #999; margin: 5px 0; line-height: 1.5; }
+  #note { font-size: 11px; color: #555; margin-top: 12px; border-top: 1px solid #eee; padding-top: 10px; line-height: 1.6; }
+  .profit-txt { color: #cc0000; font-weight: bold; } /* Červená pro přebytek */
+  .loss-txt { color: #cc8800; font-weight: bold; }   /* Oranžová pro nedostatek */
+</style>
+</head>
+<body>
+<canvas id="c" width="590" height="510"></canvas>
+<div id="panel">
+  <h3>Změna od rovnováhy</h3>
+  <div id="rows">
+    <div id="hint">Klikni na graf (vertikálně) → výběr P</div>
+  </div>
+  <div id="note"></div>
+</div>
+
+<script>
+// ─── SETUP ───────────────────────────────────────────────────────
+const cv = document.getElementById('c');
+const cx = cv.getContext('2d');
+const W = 590, H = 510;
+const ML = 55, MR = 20, MT = 22, MB = 52;
+const PW = W - ML - MR;   // 515
+const PH = H - MT - MB;   // 436
+const QMAX = 50, CMAX = 60; // Max Q=50, Max P=60
+
+// ─── ECONOMIC MODEL ──────────────────────────────────────────────
+// Nonlinear curves matching image_4.png style:
+// P_D(Q) = 60 * e^(-0.0277 * Q) (Exponential Decay Demand)
+// P_S(Q) = 10 + 0.032 * Q^2     (Quadratic Supply starting at P=10)
+const p_d = Q => 60 * Math.exp(-0.0277 * Q);
+const p_s = Q => 10 + 0.032 * Q * Q;
+
+// Inverse functions Q(P) for market gap calculations
+const q_d = P => P <= 0 ? QMAX : Math.min(QMAX, -Math.log(P / 60) / 0.0277);
+const q_s = P => P <= 10 ? 0 : Math.min(QMAX, Math.sqrt((P - 10) / 0.032));
+
+// Precise Equilibrium point (E)
+const QE = 25, PE = 30;
+
+// ─── COORD TRANSFORMS ────────────────────────────────────────────
+const tx    = Q => ML + Q / QMAX * PW;
+const ty    = C => MT + PH - C / CMAX * PH;
+const qFrom = x => (x - ML) / PW * QMAX;
+const cFrom = y => CMAX - (y - MT) / PH * CMAX;
+
+// ─── STATE ───────────────────────────────────────────────────────
+let sel = null;  // Current selection { mode: 'P', val: number }
+
+// ─── DRAWING HELPERS ─────────────────────────────────────────────
+function ln(x1, y1, x2, y2) { cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y2); cx.stroke(); }
+
+function drawGrid() {
+  cx.strokeStyle = '#f0f0f0'; cx.lineWidth = 1;
+  for (let q = 5; q < QMAX; q += 5) ln(tx(q), MT, tx(q), MT + PH);
+  for (let c = 5; c < CMAX; c += 5) ln(ML, ty(c), ML + PW, ty(c));
+}
+
+function drawAxes() {
+  cx.strokeStyle = '#444'; cx.lineWidth = 1.5;
+  ln(ML, MT + PH, ML + PW + 10, MT + PH); // Quantity (Q) axis
+  ln(ML, MT + PH, ML, MT - 10);          // Price (P) axis
+  cx.fillStyle = '#333'; cx.font = '13px Arial';
+  cx.fillText('Q', ML + PW + 14, MT + PH + 5); // Quantity label
+  cx.fillText('P', ML - 24, MT - 14);          // Price label
+  cx.font = '10px Arial'; cx.fillStyle = '#666';
+  for (let q = 10; q <= QMAX; q += 10) {
+    cx.strokeStyle = '#999'; cx.lineWidth = 1; ln(tx(q), MT + PH, tx(q), MT + PH + 5);
+    cx.fillText(q, tx(q) - 6, MT + PH + 17);
+  }
+  for (let c = 10; c <= CMAX - 10; c += 10) { // Limit labels to avoid overlap
+    cx.strokeStyle = '#999'; cx.lineWidth = 1; ln(ML - 5, ty(c), ML, ty(c));
+    cx.fillText(c, ML - 28, ty(c) + 4);
+  }
+}
+
+// ─── CURVE ───────────────────────────────────────────────────────
+function drawCurve(fn, color, q0, q1, label, lblQ) {
+  cx.save();
+  cx.beginPath(); cx.rect(ML, MT, PW, PH); cx.clip();
+  cx.beginPath(); cx.strokeStyle = color; cx.lineWidth = 2.5;
+  let first = true;
+  for (let q = q0; q <= q1; q += 0.12) {
+    const y = ty(fn(q));
+    if (first) { cx.moveTo(tx(q), y); first = false; }
+    else        cx.lineTo(tx(q), y);
+  }
+  cx.stroke(); cx.restore();
+  const lc = fn(lblQ);
+  if (lc >= 1 && lc < CMAX - 0.5) {
+    cx.fillStyle = color; cx.font = 'bold 13px Arial'; cx.textAlign = 'right';
+    cx.fillText(label, tx(lblQ) - 4, ty(lc) + 4); // Label Supply/Demand
+  }
+}
+
+function drawEquilibrium({ Q, C }, color, label) {
+  cx.save(); cx.setLineDash([4, 4]); cx.strokeStyle = '#bbb'; cx.lineWidth = 1;
+  ln(tx(Q), ty(C), tx(Q), ty(0)); ln(tx(Q), ty(C), ML, ty(C)); // Dash lines to axes
+  cx.restore();
+  cx.beginPath(); cx.arc(tx(Q), ty(C), 5.5, 0, Math.PI * 2);
+  cx.fillStyle = '#fff'; cx.fill();
+  cx.strokeStyle = color; cx.lineWidth = 2.5; cx.stroke();
+  cx.fillStyle = '#333'; cx.font = '10px Arial';
+  cx.fillText(`${label}`, tx(Q) + 8, ty(C) - 6);
+  cx.fillStyle = '#666'; cx.fillText(`(Qe=${QE.toFixed(0)}, Pe=${PE.toFixed(0)})`, tx(Q) + 8, ty(C) + 8);
+}
+
+// ─── MARKET STATE BAR ──────────────────────────────────────
+function drawMarketState() {
+  if (!sel) return;
+  const p = sel.val;
+  const qd = q_d(p);
+  const qs = q_s(p);
+  const diff = qs - qd;
+  if (p <= 0 || p > CMAX * 1.2) return; // Ignore extreme prices
+
+  cx.save();
+  const yP = ty(p);
+  const xQD = tx(qd);
+  const xQS = tx(qs);
+
+  if (diff >= 0) { // Market Surplus (S > D)
+    cx.fillStyle = 'rgba(215, 50, 50, 0.4)'; // Red bar
+    cx.strokeStyle = 'rgba(180, 30, 30, 0.9)';
+    const barW = Math.max(0, xQS - xQD); // Ensure positive width
+    const barH = 5; // Bar analogue height
+    cx.fillRect(xQD, yP - barH/2, barW, barH);
+    cx.lineWidth = 1; cx.setLineDash([]); cx.strokeRect(xQD, yP - barH/2, barW, barH);
+    const txt = 'Přebytek: ' + diff.toFixed(1);
+    cx.fillStyle = '#cc0000'; cx.font = 'bold 12px Arial'; cx.textAlign = 'right';
+    cx.fillText(txt, xQS - 5, yP - barH/2 - 4);
+  } else { // Market Shortage (D > S)
+    cx.fillStyle = 'rgba(235, 175, 0, 0.4)'; // Orange bar
+    cx.strokeStyle = 'rgba(200, 140, 30, 0.9)';
+    const barW = Math.max(0, xQD - xQS); // Ensure positive width
+    const barH = 5;
+    cx.fillRect(xQS, yP - barH/2, barW, barH);
+    cx.lineWidth = 1; cx.setLineDash([]); cx.strokeRect(xQS, yP - barH/2, barW, barH);
+    const txt = 'Nedostatek: ' + (-diff).toFixed(1);
+    cx.fillStyle = '#cc8800'; cx.font = 'bold 12px Arial'; cx.textAlign = 'left';
+    cx.fillText(txt, xQS + 5, yP - barH/2 - 4);
+  }
+  cx.restore();
+}
+
+function drawSelection() {
+  if (!sel) return;
+  cx.save(); cx.setLineDash([6, 4]); cx.strokeStyle = '#333'; cx.lineWidth = 1.5;
+  const p = sel.val; const yP = ty(p);
+  ln(ML, yP, ML + PW, yP); // Draw horizontal selected price line
+  cx.fillStyle = '#333'; cx.font = 'bold 11px Arial'; cx.fillText('P=' + p, 2, yP + 4); // Price text on P axis
+  cx.restore();
+}
+
+function draw() {
+  cx.clearRect(0, 0, W, H); cx.fillStyle = '#fff'; cx.fillRect(0, 0, W, H);
+  drawGrid(); drawAxes();
+  drawCurve(p_d, '#1e88e5', 0, 50, 'D (Poptávka)', 40); // Blue for Demand
+  drawCurve(p_s, '#e53935', 0, 50, 'S (Nabídka)', 40);  // Red for Supply
+  drawEquilibrium({Q: QE, C: PE}, '#333', 'E (Rovnováha)');
+  drawSelection();
+  drawMarketState(); // Draw market state gap bar
+}
+
+// ─── INDICATOR PANEL ─────────────────────────────────────────────
+function arrowFor(val, ref) {
+  const d = val - ref;
+  if (d >  0.3) return { a: '↑', cls: 'up' };
+  if (d < -0.3) return { a: '↓', cls: 'dn' };
+  return { a: '≈', cls: 'eq' };
+}
+function indRow(label, val, ref) {
+  const { a, cls } = arrowFor(val, ref);
+  return `<div class="row"><span class="lbl">${label}</span><span class="${cls}">${a}</span><span class="num">${val.toFixed(1)}</span></div>`;
+}
+
+function updatePanel() {
+  const rowsDiv = document.getElementById('rows');
+  const noteDiv = document.getElementById('note');
+  if (!sel) {
+    rowsDiv.innerHTML = '<div id="hint">Klikni na graf (vertikálně) → výběr P</div>';
+    noteDiv.innerHTML = `<b>Rovnováha:</b><br>Qe = ${QE.toFixed(0)}, Pe = ${PE.toFixed(0)}`;
+    return;
+  }
+  const p = sel.val; const qd = q_d(p); const qs = q_s(p); const diff = qs - qd;
+  rowsDiv.innerHTML =
+    indRow('P',   p,    PE) +
+    indRow('Qd',  qd,   QE) +
+    indRow('Qs',  qs,   QE);
+  
+  let statusText = p >= PE ? '🟢 P ≥ Pe → Tržní přebytek' : 
+                   p >= 10 ? '🟡 P < Pe → Tržní nedostatek' :
+                             '🔴 P < 10 → Nabídka je nulová';
+
+  let baseNote = `<b>Vybraná Cena P = ${p}</b><br><br>${statusText}<br>Qe = ${QE.toFixed(0)}, Pe = ${PE.toFixed(0)}`;
+  if (qd > 0 || qs > 0) {
+    let cls = diff >= 0 ? 'profit-txt' : 'loss-txt';
+    let lbl = diff >= 0 ? 'Přebytek:' : 'Nedostatek:';
+    baseNote += `<br><br><span class="${cls}">${lbl} ${Math.abs(diff).toFixed(1)}</span>`;
+  }
+  noteDiv.innerHTML = baseNote;
+}
+
+// ─── CLICK ───────────────────────────────────────────────────────
+cv.addEventListener('click', e => {
+  const rect = cv.getBoundingClientRect();
+  const x = (e.clientX - rect.left) * W / rect.width;
+  const y = (e.clientY - rect.top)  * H / rect.height;
+  const inChart = x >= ML && x <= ML + PW && y >= MT && y <= MT + PH;
+  const onPAxis = x >= 0  && x <  ML      && y >= MT     && y <= MT + PH;
+  
+  // Logic analogue: Clicking the chart (vertically) sets the Price
+  if (onPAxis) {
+    sel = { mode: 'P', val: Math.max(1, Math.min(59, Math.round(cFrom(y)))) }; // Price from vertical axis
+  } else if (inChart) {
+    sel = { mode: 'P', val: Math.round(cFrom(y)) }; // Vertical position in chart sets Price
+  }
+  draw(); updatePanel();
+});
+updatePanel(); draw(); // Initial draw
+</script>
+</body>
+</html>
+HTMLEOF
+echo "done"
