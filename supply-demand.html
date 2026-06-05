@@ -226,4 +226,34 @@ function updatePanel() {
     statusText = '<span class="shortage-txt">🟡 P < Pe → Tržní nedostatek</span><br>Cena je nízká, kupující mají obrovský zájem, ale zboží je málo. Vzniká tlak na růst ceny.';
     finalCalculations = `<br><br><span class="shortage-txt">Celkový nedostatek: ${Math.abs(diff).toFixed(1)}</span>`;
   } else {
-    statusText = '
+    statusText = '<span class="surplus-txt">🔴 P < 10 → Nulová nabídka</span><br>Při takto nízké ceně se výrobcům nevyplatí produkovat vůbec nic.';
+  }
+
+  noteDiv.innerHTML = `<b>Tržní stav při P = ${p.toFixed(1)}</b><br><br>${statusText}${finalCalculations}`;
+}
+
+function handleEvent(e) {
+  const rect = cv.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  const x = (e.clientX - rect.left) * scaleX;
+  const y = (e.clientY - rect.top) * scaleY;
+
+  if (x >= ML && x <= ML + PW && y >= MT && y <= MT + PH) {
+    selP = Math.max(0, Math.min(CMAX, cFromY(y)));
+    draw();
+    updatePanel();
+  }
+}
+
+cv.addEventListener('mousedown', e => { isDragging = true; handleEvent(e); });
+window.addEventListener('mousemove', e => { if (isDragging) handleEvent(e); });
+window.addEventListener('mouseup', () => { isDragging = false; });
+cv.addEventListener('click', handleEvent);
+
+// Spuštění
+updatePanel();
+draw();
+</script>
+</body>
+</html>
