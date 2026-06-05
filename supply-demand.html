@@ -40,36 +40,47 @@ const PW = W - ML - MR;
 const PH = H - MT - MB;
 const QMAX = 50, CMAX = 60;
 
-// Model
+// Bezpečné matematické modely chráněné proti nule a záporným číslům
 const p_d = Q => 60 * Math.exp(-0.0277 * Q);
 const p_s = Q => 10 + 0.032 * Q * Q;
 
-const q_d = P => P <= 0 ? QMAX : Math.min(QMAX, -Math.log(P / 60) / 0.0277);
-const q_s = P => P <= 10 ? 0 : Math.min(QMAX, Math.sqrt((P - 10) / 0.032));
+const q_d = P => {
+  if (P >= 60) return 0;
+  if (P <= 0.1) return QMAX;
+  return Math.max(0, Math.min(QMAX, -Math.log(P / 60) / 0.0277));
+};
 
-const QE = 25, PE = 30;
+const q_s = P => {
+  if (P <= 10) return 0;
+  return Math.max(0, Math.min(QMAX, Math.sqrt((P - 10) / 0.032)));
+};
+
+const QE = 25, PE = 30; // Rovnováha
 
 const tx = Q => ML + Q / QMAX * PW;
 const ty = C => MT + PH - C / CMAX * PH;
 const cFromY = y => CMAX - (y - MT) / PH * CMAX;
 
-let selP = 45; // Výchozí nastavení na přebytek, aby graf nebyl prázdný
+let selP = 45; // Výchozí cena nastavena na přebytek, aby graf hned žil
 let isDragging = false;
 
 function ln(x1, y1, x2, y2) { cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y2); cx.stroke(); }
 
 function drawBackgroundZones() {
+  // Horní červenavá oblast pro přebytek
   cx.fillStyle = 'rgba(255, 235, 235, 0.4)';
   cx.fillRect(ML, ty(CMAX), PW, ty(PE) - ty(CMAX));
-  cx.fillStyle = 'rgba(180, 50, 50, 0.3)';
+  cx.fillStyle = 'rgba(180, 50, 50, 0.4)';
   cx.font = 'italic 12px Arial';
   cx.fillText('přebytek (surplus)', ML + PW - 115, ty(CMAX) + 20);
 
+  // Dolní žlutavá oblast pro nedostatek
   cx.fillStyle = 'rgba(255, 250, 220, 0.4)';
   cx.fillRect(ML, ty(PE), PW, ty(10) - ty(PE));
   cx.fillStyle = 'rgba(160, 110, 20, 0.4)';
   cx.fillText('nedostatek (shortage)', ML + PW - 130, ty(PE) + 20);
 
+  // Oblast pod minimální cenou nabídky
   cx.fillStyle = '#f9f9f9';
   cx.fillRect(ML, ty(10), PW, ty(0) - ty(10));
 }
@@ -82,8 +93,8 @@ function drawGrid() {
 
 function drawAxes() {
   cx.strokeStyle = '#333'; cx.lineWidth = 2;
-  ln(ML, MT + PH, ML + PW + 10, MT + PH);
-  ln(ML, MT + PH, ML, MT - 10);
+  ln(ML, MT + PH, ML + PW + 10, MT + PH); // Osa Q
+  ln(ML, MT + PH, ML, MT - 10);          // Osa P
   
   cx.fillStyle = '#111'; cx.font = 'bold 14px Arial';
   cx.fillText('Q', ML + PW + 12, MT + PH + 5);
@@ -126,134 +137,45 @@ function drawInteractiveZone() {
   const y0 = ty(0);
 
   cx.save();
-  // Vykreslení velkých barevných zón dolů k ose Q (jako u grafu 1)
+  
+  // Vykreslení velkých barevných obdélníků směrem DOLŮ k ose Q (stejný styl jako u grafu 1)
   if (p > PE) {
-    // Přebytek: Obdélník mezi Qd a Qs sahající až dolů k ose Q
-    cx.fillStyle = 'rgba(215, 50, 50, 0.2)';
-    cx.strokeStyle = 'rgba(180, 30, 30, 0.5)';
+    // Přebytek: Obdélník padající dolů k ose mezi hodnotami Qd a Qs
+    cx.fillStyle = 'rgba(215, 50, 50, 0.18)';
+    cx.strokeStyle = 'rgba(180, 30, 30, 0.6)';
     cx.fillRect(xQD, yP, xQS - xQD, y0 - yP);
     cx.lineWidth = 1.5;
     cx.strokeRect(xQD, yP, xQS - xQD, y0 - yP);
 
+    // Text uprostřed vybarveného obdélníku
     cx.fillStyle = '#cc0000'; cx.font = 'bold 13px Arial'; cx.textAlign = 'center';
-    cx.fillText(`Přebytek: ${(qs - qd).toFixed(1)}`, xQD + (xQS - xQD)/2, yP + 20);
+    cx.fillText(`Přebytek: ${(qs - qd).toFixed(1)}`, xQD + (xQS - xQD) / 2, yP + (y0 - yP) / 2);
+
   } else if (p < PE && p >= 10) {
-    // Nedostatek: Obdélník mezi Qs a Qd sahající až dolů k ose Q
-    cx.fillStyle = 'rgba(235, 175, 0, 0.2)';
-    cx.strokeStyle = 'rgba(200, 140, 30, 0.5)';
+    // Nedostatek: Obdélník padající dolů k ose mezi hodnotami Qs a Qd
+    cx.fillStyle = 'rgba(235, 175, 0, 0.18)';
+    cx.strokeStyle = 'rgba(200, 140, 30, 0.6)';
     cx.fillRect(xQS, yP, xQD - xQS, y0 - yP);
     cx.lineWidth = 1.5;
     cx.strokeRect(xQS, yP, xQD - xQS, y0 - yP);
 
+    // Text uprostřed vybarveného obdélníku
     cx.fillStyle = '#c68400'; cx.font = 'bold 13px Arial'; cx.textAlign = 'center';
-    cx.fillText(`Nedostatek: ${(qd - qs).toFixed(1)}`, xQS + (xQD - xQS)/2, yP + 20);
+    cx.fillText(`Nedostatek: ${(qd - qs).toFixed(1)}`, xQS + (xQD - xQS) / 2, yP + (y0 - yP) / 2);
   }
 
-  // Vodící čáry k osám
+  // Vodící čárkované linky k osám
   cx.setLineDash([5, 4]); cx.strokeStyle = '#444'; cx.lineWidth = 1.2;
+  
+  // Vodorovná linka od osy P
   ln(ML, yP, Math.max(xQD, xQS), yP);
   
+  // Svislé linky dolů k ose Q
   if (p >= 10) {
     ln(xQD, yP, xQD, y0);
     ln(xQS, yP, xQS, y0);
     
-    // Dynamické popisky Qd a Qs na ose hned vedle čar z učebnice
+    // Popisky Qd a Qs na ose Q (přesně jako na nákresu z učebnice)
     cx.setLineDash([]); cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
     cx.fillStyle = '#1e88e5'; cx.fillText(`Qd`, xQD, y0 + 32);
-    cx.fillStyle = '#e53935'; cx.fillText(`Qs`, xQS, y0 + 32);
-  }
-  cx.restore();
-}
-
-function drawEquilibrium() {
-  cx.save(); cx.setLineDash([3, 3]); cx.strokeStyle = '#777'; cx.lineWidth = 1;
-  ln(tx(QE), ty(PE), tx(QE), ty(0));
-  ln(tx(QE), ty(PE), ML, ty(PE));
-  cx.restore();
-
-  cx.beginPath(); cx.arc(tx(QE), ty(PE), 6, 0, Math.PI * 2);
-  cx.fillStyle = '#fff'; cx.fill();
-  cx.strokeStyle = '#222'; cx.lineWidth = 2; cx.stroke();
-  
-  cx.fillStyle = '#222'; cx.font = 'bold 13px Arial';
-  cx.fillText('E', tx(QE) + 10, ty(PE) - 8);
-  
-  // Popisek Qe na ose Q
-  cx.font = 'bold 12px Arial'; cx.fillStyle = '#333'; cx.textAlign = 'center';
-  cx.fillText('Qe', tx(QE), ty(0) + 32);
-}
-
-function draw() {
-  cx.clearRect(0, 0, W, H);
-  drawBackgroundZones();
-  drawGrid();
-  drawInteractiveZone();
-  drawCurve(p_d, '#1e88e5', 'D', 42);
-  drawCurve(p_s, '#e53935', 'S', 40);
-  drawEquilibrium();
-  drawAxes();
-}
-
-function arrowFor(val, ref) {
-  if (val - ref > 0.1) return { a: '↑', cls: 'up' };
-  if (ref - val > 0.1) return { a: '↓', cls: 'dn' };
-  return { a: '≈', cls: 'eq' };
-}
-function indRow(label, val, ref) {
-  const { a, cls } = arrowFor(val, ref);
-  return `<div class="row"><span class="lbl">${label}</span><span class="${cls}">${a}</span><span class="num">${val.toFixed(1)}</span></div>`;
-}
-
-function updatePanel() {
-  const rowsDiv = document.getElementById('rows');
-  const noteDiv = document.getElementById('note');
-  
-  if (selP === null) {
-    rowsDiv.innerHTML = '';
-    return;
-  }
-
-  const p = selP; const qd = q_d(p); const qs = q_s(p); const diff = qs - qd;
-  rowsDiv.innerHTML = indRow('Cena (P)', p, PE) + indRow('Poptávka (Qd)', qd, QE) + indRow('Nabídka (Qs)', qs, QE);
-
-  let statusText = '';
-  let finalCalculations = '';
-
-  if (p > PE) {
-    statusText = '<span class="surplus-txt">🟢 P > Pe → Tržní přebytek</span><br>Cena je příliš vysoká. Výrobci neprodají všechno zboží, vzniká tlak na pokles ceny.';
-    finalCalculations = `<br><br><span class="surplus-txt">Celkový přebytek: ${diff.toFixed(1)}</span>`;
-  } else if (p < PE && p >= 10) {
-    statusText = '<span class="shortage-txt">🟡 P < Pe → Tržní nedostatek</span><br>Cena je nízká, kupující mají obrovský zájem, ale zboží je málo. Vzniká tlak na růst ceny.';
-    finalCalculations = `<br><br><span class="shortage-txt">Celkový nedostatek: ${Math.abs(diff).toFixed(1)}</span>`;
-  } else {
-    statusText = '<span class="surplus-txt">🔴 P < 10 → Nulová nabídka</span><br>Při takto nízké ceně se výrobcům nevyplatí produkovat vůbec nic.';
-  }
-
-  noteDiv.innerHTML = `<b>Tržní stav při P = ${p.toFixed(1)}</b><br><br>${statusText}${finalCalculations}`;
-}
-
-function handleEvent(e) {
-  const rect = cv.getBoundingClientRect();
-  const scaleX = W / rect.width;
-  const scaleY = H / rect.height;
-  const x = (e.clientX - rect.left) * scaleX;
-  const y = (e.clientY - rect.top) * scaleY;
-
-  if (x >= ML && x <= ML + PW && y >= MT && y <= MT + PH) {
-    selP = Math.max(0, Math.min(CMAX, cFromY(y)));
-    draw();
-    updatePanel();
-  }
-}
-
-cv.addEventListener('mousedown', e => { isDragging = true; handleEvent(e); });
-window.addEventListener('mousemove', e => { if (isDragging) handleEvent(e); });
-window.addEventListener('mouseup', () => { isDragging = false; });
-cv.addEventListener('click', handleEvent);
-
-// Spuštění
-updatePanel();
-draw();
-</script>
-</body>
-</html>
+    cx.fillStyle = '#e53935'; cx.fillText(`Qs`, xQS, y0 + 32
