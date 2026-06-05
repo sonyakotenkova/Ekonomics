@@ -4,176 +4,267 @@
 <meta charset="UTF-8">
 <title>Poptávka a nabídka</title>
 <style>
-  body { margin: 0; padding: 16px; font-family: Arial, sans-serif; background: #eee; display: flex; gap: 20px; align-items: flex-start; }
-  canvas { background: white; cursor: crosshair; display: block; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-  #panel { background: white; padding: 16px; min-width: 240px; border: 1px solid #ccc; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-  h3 { margin: 0 0 10px; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
-  .row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
-  .lbl { font-weight: bold; font-size: 13px; min-width: 55px; }
-  .up  { color: #cc0000; font-size: 24px; font-weight: bold; line-height: 1; }
-  .dn  { color: #008800; font-size: 24px; font-weight: bold; line-height: 1; }
-  .eq  { color: #999966; font-size: 24px; line-height: 1; }
-  .num { font-size: 13px; font-weight: bold; color: #333; margin-left: auto; }
-  #hint { font-size: 12px; color: #888; margin: 5px 0; line-height: 1.5; text-align: center; background: #f9f9f9; padding: 6px; border-radius: 4px; }
-  #note { font-size: 12px; color: #444; margin-top: 12px; border-top: 1px solid #eee; padding-top: 10px; line-height: 1.6; }
-  .surplus-txt { color: #cc0000; font-weight: bold; }
-  .shortage-txt { color: #cc8800; font-weight: bold; }
+  body { 
+    font-family: Arial, sans-serif; 
+    display: flex; 
+    gap: 20px; 
+    background: #f4f4f4; 
+    padding: 20px; 
+    margin: 0;
+  }
+  .container { 
+    background: white; 
+    border: 1px solid #ccc; 
+    display: flex; 
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+  }
+  canvas { 
+    cursor: crosshair; 
+    display: block;
+  }
+  .panel { 
+    padding: 20px; 
+    border-left: 1px solid #ccc; 
+    min-width: 250px; 
+    background: #fafafa; 
+  }
+  h3 { margin-top: 0; margin-bottom: 5px; font-size: 16px; border-bottom: 1px solid #ddd; padding-bottom: 10px; }
+  .hint { font-size: 12px; color: gray; margin-bottom: 15px; }
+  .row { display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; font-weight: bold; font-size: 14px;}
+  .up { color: #d32f2f; font-size: 18px; }
+  .down { color: #388e3c; font-size: 18px; }
+  .eq { color: gray; font-size: 18px; }
+  .surplus { color: #d32f2f; font-weight: bold; }
+  .shortage { color: #f57c00; font-weight: bold; }
+  #status-box { margin-top: 20px; font-size: 13px; line-height: 1.5; }
 </style>
 </head>
 <body>
 
-<canvas id="c" width="590" height="510"></canvas>
-
-<div id="panel">
-  <h3>Změna od rovnováhy</h3>
-  <div id="hint">Klikni nebo táhni myší v grafu</div>
-  <div id="rows"></div>
-  <div id="note"></div>
+<div class="container">
+  <canvas id="graphCanvas" width="550" height="450"></canvas>
+  <div class="panel">
+    <h3>Změna od rovnováhy</h3>
+    <div class="hint">Klikni nebo táhni myší v grafu</div>
+    <div id="data-rows"></div>
+    <div id="status-box"></div>
+  </div>
 </div>
 
 <script>
-const cv = document.getElementById('c');
-const cx = cv.getContext('2d');
-const W = 590, H = 510;
-const ML = 55, MR = 25, MT = 25, MB = 55;
-const PW = W - ML - MR;
-const PH = H - MT - MB;
-const QMAX = 50, CMAX = 60;
+const canvas = document.getElementById('graphCanvas');
+const ctx = canvas.getContext('2d');
 
-// Ekonomické rovnice
+const W = 550, H = 450;
+const pad = { top: 30, right: 30, bottom: 40, left: 40 };
+const innerW = W - pad.left - pad.right;
+const innerH = H - pad.top - pad.bottom;
+
+const QMAX = 50;
+const PMAX = 60;
+
+// Rovnice
 const p_d = Q => 60 * Math.exp(-0.0277 * Q);
-const p_s = Q => 10 + 0.032 * Q * Q;
-
 const q_d = P => {
   if (P >= 60) return 0;
   if (P <= 0.1) return QMAX;
-  return Math.max(0, Math.min(QMAX, -Math.log(P / 60) / 0.0277));
+  return Math.max(0, -Math.log(P / 60) / 0.0277);
 };
 
+const p_s = Q => 10 + 0.032 * Q * Q;
 const q_s = P => {
   if (P <= 10) return 0;
-  return Math.max(0, Math.min(QMAX, Math.sqrt((P - 10) / 0.032)));
+  return Math.max(0, Math.sqrt((P - 10) / 0.032));
 };
 
-const QE = 25, PE = 30; // Bod tržního optima E
+const Pe = 30; // Rovnovážná cena
+const Qe = 25; // Rovnovážné množství
 
-const tx = Q => ML + Q / QMAX * PW;
-const ty = C => MT + PH - C / CMAX * PH;
-const cFromY = y => CMAX - (y - MT) / PH * CMAX;
+// Přepočet na pixely
+const sx = Q => pad.left + (Q / QMAX) * innerW;
+const sy = P => pad.top + innerH - (P / PMAX) * innerH;
+const pFromY = y => PMAX - ((y - pad.top) / innerH) * PMAX;
 
-let selP = 45; // Výchozí pozice
+let currentP = 50; // Výchozí cena
 let isDragging = false;
 
-function ln(x1, y1, x2, y2) { cx.beginPath(); cx.moveTo(x1, y1); cx.lineTo(x2, y2); cx.stroke(); }
-
-function drawGrid() {
-  cx.strokeStyle = '#f5f5f5'; cx.lineWidth = 1;
-  for (let q = 5; q < QMAX; q += 5) ln(tx(q), MT, tx(q), MT + PH);
-  for (let c = 5; c < CMAX; c += 5) ln(ML, ty(c), ML + PW, ty(c));
-}
-
-function drawAxes() {
-  cx.strokeStyle = '#333'; cx.lineWidth = 2;
-  ln(ML, MT + PH, ML + PW + 10, MT + PH);
-  ln(ML, MT + PH, ML, MT - 10);
+function draw() {
+  ctx.clearRect(0, 0, W, H);
   
-  cx.fillStyle = '#111'; cx.font = 'bold 14px Arial';
-  cx.fillText('Q', ML + PW + 12, MT + PH + 5);
-  cx.fillText('P', ML - 25, MT - 12);
+  // Mřížka
+  ctx.strokeStyle = '#f0f0f0';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for(let i=10; i<=QMAX; i+=10) { ctx.moveTo(sx(i), pad.top); ctx.lineTo(sx(i), pad.top + innerH); }
+  for(let i=10; i<=PMAX; i+=10) { ctx.moveTo(pad.left, sy(i)); ctx.lineTo(pad.left + innerW, sy(i)); }
+  ctx.stroke();
 
-  cx.font = '11px Arial'; cx.fillStyle = '#666';
-  for (let q = 10; q <= QMAX; q += 10) {
-    ln(tx(q), MT + PH, tx(q), MT + PH + 5);
-    cx.fillText(q, tx(q) - 6, MT + PH + 18);
-  }
-  for (let c = 10; c <= CMAX; c += 10) {
-    ln(ML - 5, ty(c), ML, ty(c));
-    cx.fillText(c, ML - 25, ty(c) + 4);
-  }
-}
+  // Osy
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(pad.left, pad.top); ctx.lineTo(pad.left, pad.top + innerH);
+  ctx.moveTo(pad.left, pad.top + innerH); ctx.lineTo(pad.left + innerW, pad.top + innerH);
+  ctx.stroke();
+  
+  ctx.fillStyle = '#000';
+  ctx.font = 'bold 12px Arial';
+  ctx.fillText('P', pad.left - 20, pad.top - 10);
+  ctx.fillText('Q', pad.left + innerW + 10, pad.top + innerH + 5);
+  
+  ctx.font = '11px Arial';
+  ctx.fillStyle = '#666';
+  for(let i=10; i<=QMAX; i+=10) ctx.fillText(i, sx(i) - 6, pad.top + innerH + 15);
+  for(let i=10; i<=PMAX; i+=10) ctx.fillText(i, pad.left - 22, sy(i) + 4);
 
-function drawCurve(fn, color, label, lblQ) {
-  cx.beginPath(); cx.strokeStyle = color; cx.lineWidth = 3;
-  let first = true;
-  for (let q = 0; q <= QMAX; q += 0.5) {
-    const y = ty(fn(q));
-    if (y >= MT && y <= MT + PH) {
-      if (first) { cx.moveTo(tx(q), y); first = false; }
-      else cx.lineTo(tx(q), y);
+  // Křivka poptávky (Modrá)
+  ctx.strokeStyle = '#2196F3';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let q=0; q<=QMAX; q+=0.5) {
+    let p = p_d(q);
+    if(p <= PMAX) {
+      if(q===0) ctx.moveTo(sx(q), sy(p));
+      else ctx.lineTo(sx(q), sy(p));
     }
   }
-  cx.stroke();
-  cx.fillStyle = color; cx.font = 'bold 14px Arial';
-  cx.fillText(label, tx(lblQ), ty(fn(lblQ)) - 8);
-}
+  ctx.stroke();
+  ctx.fillStyle = '#2196F3';
+  ctx.fillText('D (Poptávka)', sx(33), sy(p_d(33)) - 10);
 
-function drawInteractiveZone() {
-  if (selP === null) return;
-  const p = selP;
-  const qd = q_d(p);
-  const qs = q_s(p);
-  const xQD = tx(qd);
-  const xQS = tx(qs);
-  const yP = ty(p);
-  const y0 = ty(0);
+  // Křivka nabídky (Červená)
+  ctx.strokeStyle = '#F44336';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for(let q=0; q<=QMAX; q+=0.5) {
+    let p = p_s(q);
+    if(p <= PMAX) {
+      if(q===0) ctx.moveTo(sx(q), sy(p));
+      else ctx.lineTo(sx(q), sy(p));
+    }
+  }
+  ctx.stroke();
 
-  cx.save();
+  // Rovnováha E
+  ctx.setLineDash([3, 3]);
+  ctx.strokeStyle = '#999';
+  ctx.beginPath();
+  ctx.moveTo(sx(Qe), sy(Pe)); ctx.lineTo(sx(Qe), pad.top + innerH);
+  ctx.moveTo(sx(Qe), sy(Pe)); ctx.lineTo(pad.left, sy(Pe));
+  ctx.stroke();
+  ctx.setLineDash([]);
   
-  // Vodorovná čárkovaná čára pro aktuální cenu po celé šířce grafu
-  cx.setLineDash([5, 4]); cx.strokeStyle = '#333'; cx.lineWidth = 1;
-  ln(ML, yP, ML + PW, yP);
+  ctx.beginPath();
+  ctx.arc(sx(Qe), sy(Pe), 4, 0, Math.PI*2);
+  ctx.fillStyle = 'white'; ctx.fill();
+  ctx.strokeStyle = '#333'; ctx.stroke();
+  ctx.fillStyle = '#333';
+  ctx.fillText('E (Rovnováha)', sx(Qe) - 25, sy(Pe) - 10);
+  ctx.fillStyle = '#888';
+  ctx.fillText(`(Qe=${Qe}, Pe=${Pe})`, sx(Qe) - 25, sy(Pe) + 15);
 
-  cx.setLineDash([]); // Reset přerušované čáry
+  // Zvýraznění přebytku/nedostatku
+  let Qd = q_d(currentP);
+  let Qs = q_s(currentP);
+  
+  // Linka aktuální ceny
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = '#333';
+  ctx.beginPath();
+  ctx.moveTo(pad.left, sy(currentP));
+  ctx.lineTo(pad.left + innerW, sy(currentP));
+  ctx.stroke();
+  ctx.setLineDash([]);
 
-  if (p > PE + 0.1) {
-    // PŘEBYTEK - Jednoduchý horizontální obdélník
-    const barHeight = 8;
-    cx.fillStyle = 'rgba(215, 50, 50, 0.25)'; // Světlá výplň
-    cx.strokeStyle = '#cc0000'; // Výrazný okraj
-    cx.lineWidth = 1.5;
-
-    // Vykreslí vodorovný pruh mezi Qd a Qs
-    cx.fillRect(xQD, yP - barHeight / 2, xQS - xQD, barHeight);
-    cx.strokeRect(xQD, yP - barHeight / 2, xQS - xQD, barHeight);
-
-    // Text nad obdélníkem
-    cx.fillStyle = '#cc0000'; cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
-    cx.fillText(`Přebytek: ${(qs - qd).toFixed(1)}`, xQD + (xQS - xQD) / 2, yP - 10);
-
-  } else if (p < PE - 0.1 && p >= 10) {
-    // NEDOSTATEK - Jednoduchý horizontální obdélník
-    const barHeight = 8;
-    cx.fillStyle = 'rgba(235, 175, 0, 0.25)';
-    cx.strokeStyle = '#c68400';
-    cx.lineWidth = 1.5;
-
-    // Vykreslí vodorovný pruh mezi Qs a Qd
-    cx.fillRect(xQS, yP - barHeight / 2, xQD - xQS, barHeight);
-    cx.strokeRect(xQS, yP - barHeight / 2, xQD - xQS, barHeight);
-
-    // Text pod obdélníkem
-    cx.fillStyle = '#c68400'; cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
-    cx.fillText(`Nedostatek: ${(qd - qs).toFixed(1)}`, xQS + (xQD - xQS) / 2, yP + 18);
-  }
-
-  // Svislé čárkované čáry od pruhu dolů k ose Q
-  if (p >= 10 && Math.abs(p - PE) > 0.1) {
-    cx.setLineDash([5, 4]); cx.strokeStyle = '#777'; cx.lineWidth = 1;
-    ln(xQD, yP, xQD, y0);
-    ln(xQS, yP, xQS, y0);
+  if (currentP > Pe + 0.1) {
+    // HORIZONTÁLNÍ PRUH PRO PŘEBYTEK
+    let y = sy(currentP);
+    let x1 = sx(Qd);
+    let x2 = sx(Qs);
     
-    // Názvy Qd a Qs na ose Q
-    cx.setLineDash([]); cx.font = 'bold 12px Arial'; cx.textAlign = 'center';
-    cx.fillStyle = '#1e88e5'; cx.fillText(`Qd`, xQD, y0 + 16);
-    cx.fillStyle = '#e53935'; cx.fillText(`Qs`, xQS, y0 + 16);
+    ctx.fillStyle = 'rgba(244, 67, 54, 0.4)';
+    ctx.strokeStyle = '#d32f2f';
+    ctx.lineWidth = 1;
+    ctx.fillRect(x1, y - 3, x2 - x1, 6);
+    ctx.strokeRect(x1, y - 3, x2 - x1, 6);
+    
+    ctx.fillStyle = '#d32f2f';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Přebytek: ${(Qs - Qd).toFixed(1)}`, (x1 + x2)/2, y - 10);
+    ctx.textAlign = 'left';
+
+  } else if (currentP < Pe - 0.1 && currentP >= 10) {
+    // HORIZONTÁLNÍ PRUH PRO NEDOSTATEK
+    let y = sy(currentP);
+    let x1 = sx(Qs);
+    let x2 = sx(Qd);
+    
+    ctx.fillStyle = 'rgba(255, 152, 0, 0.4)';
+    ctx.strokeStyle = '#f57c00';
+    ctx.lineWidth = 1;
+    ctx.fillRect(x1, y - 3, x2 - x1, 6);
+    ctx.strokeRect(x1, y - 3, x2 - x1, 6);
+    
+    ctx.fillStyle = '#f57c00';
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(`Nedostatek: ${(Qd - Qs).toFixed(1)}`, (x1 + x2)/2, y + 18);
+    ctx.textAlign = 'left';
   }
-  cx.restore();
 }
 
-function drawEquilibrium() {
-  cx.save(); cx.setLineDash([3, 3]); cx.strokeStyle = '#777'; cx.lineWidth = 1;
-  ln(tx(QE), ty(PE), tx(QE), ty(0));
-  ln(tx(QE), ty(PE), ML, ty(PE));
-  cx.restore();
+function updatePanel() {
+  let Qd = q_d(currentP);
+  let Qs = q_s(currentP);
+  
+  const rows = document.getElementById('data-rows');
+  const status = document.getElementById('status-box');
+  
+  const getArrow = (val, eq) => val > eq + 0.1 ? '<span class="up">↑</span>' : (val < eq - 0.1 ? '<span class="down">↓</span>' : '<span class="eq">=</span>');
+  
+  rows.innerHTML = `
+    <div class="row"><span>P</span> <span>${getArrow(currentP, Pe)} &nbsp; ${currentP.toFixed(1)}</span></div>
+    <div class="row"><span>Qd</span> <span>${getArrow(Qd, Qe)} &nbsp; ${Qd.toFixed(1)}</span></div>
+    <div class="row"><span>Qs</span> <span>${getArrow(Qs, Qe)} &nbsp; ${Qs.toFixed(1)}</span></div>
+  `;
+  
+  if (currentP > Pe + 0.1) {
+    status.innerHTML = `<span style="color: #388e3c; font-weight: bold;">🟢 P > Pe → Tržní přebytek</span><br><br>
+    Cena je moc vysoká. Výrobci nabízí víc, než lidé chtějí koupit. Vzniká tlak na snížení ceny.<br><br>
+    <span class="surplus">Celkový přebytek: ${(Qs - Qd).toFixed(1)}</span>`;
+  } else if (currentP < Pe - 0.1 && currentP >= 10) {
+    status.innerHTML = `<span style="color: #f57c00; font-weight: bold;">🟡 P < Pe → Tržní nedostatek</span><br><br>
+    Nízká cena láká kupující, ale firmám se nechce vyrábět. Zboží je nedostatek, cena poletí vzhůru.<br><br>
+    <span class="shortage">Celkový nedostatek: ${(Qd - Qs).toFixed(1)}</span>`;
+  } else if (currentP < 10) {
+    status.innerHTML = `<span style="color: #d32f2f; font-weight: bold;">🔴 Cena je příliš nízká</span><br>Nikdo nevyrábí.`;
+  } else {
+    status.innerHTML = `<span style="color: #388e3c; font-weight: bold;">🟢 Tržní rovnováha</span><br>Poptávka = Nabídka`;
+  }
+}
 
-  cx.beginPath(); cx.arc(
+function handleMouse(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleY = canvas.height / rect.height;
+  const y = (e.clientY - rect.top) * scaleY;
+  
+  let p = pFromY(y);
+  if (p < 0) p = 0;
+  if (p > PMAX) p = PMAX;
+  currentP = p;
+  
+  draw();
+  updatePanel();
+}
+
+canvas.addEventListener('mousedown', e => { isDragging = true; handleMouse(e); });
+window.addEventListener('mousemove', e => { if(isDragging) handleMouse(e); });
+window.addEventListener('mouseup', () => { isDragging = false; });
+canvas.addEventListener('click', handleMouse);
+
+draw();
+updatePanel();
+</script>
+</body>
+</html>
